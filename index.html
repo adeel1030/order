@@ -1028,16 +1028,6 @@ async function submitToOrderOps(preGeneratedId){
       orderOpsSave('customers', customers),
       orderOpsSave('orders_'+dayKey, todaysOrders)
     ]);
-    // Let admin/manager know a website order came in, same as an in-app order would.
-    try{
-      const notifyUsernames = (data.users||[]).filter(u=>u.role==='admin'||u.role==='manager').map(u=>u.username);
-      if(notifyUsernames.length){
-        fetch(ORDEROPS_API_URL, {
-          method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
-          body: JSON.stringify({ secret:ORDEROPS_SECRET, action:'sendNotification', usernames:notifyUsernames, title:'New order received (Website)', body:`${cust.name} — ${items.length} item(s)`, data:{link:'/'} })
-        }).catch(()=>{});
-      }
-    }catch(e){ /* non-fatal */ }
     return { id: order.id, dayKey };
   }catch(e){
     console.error('Order Ops submission failed', e);
