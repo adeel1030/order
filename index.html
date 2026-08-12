@@ -269,6 +269,24 @@
   .submit-note{font-size:10px;color:var(--ink-soft);text-align:center;margin-top:6px;}
 
   /* ---------- Track Order button + tracking mode ---------- */
+  .form-alert-overlay{
+    position:fixed;inset:0;background:rgba(20,26,16,0.6);display:flex;align-items:center;justify-content:center;
+    z-index:999;padding:20px;
+  }
+  .form-alert-box{
+    background:#fff;border-radius:16px;padding:22px 20px;max-width:320px;width:100%;text-align:center;
+    border:2px solid var(--red);box-shadow:0 20px 50px -12px rgba(179,39,30,0.4);
+    animation:formAlertPop .18s cubic-bezier(.2,.8,.3,1);
+  }
+  @keyframes formAlertPop{ from{transform:scale(0.9);opacity:0;} to{transform:scale(1);opacity:1;} }
+  .form-alert-icon{font-size:32px;margin-bottom:10px;}
+  .form-alert-message{font-family:'Inter',sans-serif;font-size:14px;color:var(--ink);line-height:1.5;margin-bottom:18px;white-space:pre-line;}
+  .form-alert-ok-btn{
+    background:var(--red);color:#fff;border:none;border-radius:11px;padding:11px 32px;
+    font-family:'Inter',sans-serif;font-weight:800;font-size:14px;cursor:pointer;width:100%;
+  }
+  .form-alert-ok-btn:active{transform:scale(0.96);}
+
   .track-order-btn{
     position:absolute;top:16px;right:16px;z-index:5;
     background:var(--green-pale);color:var(--green-dark);border:1px solid var(--border);
@@ -404,6 +422,23 @@ function uid(){ return (crypto.randomUUID ? crypto.randomUUID() : (Date.now()+'-
 // Must match the main app's itemKey() convention exactly (name + '__' + size, verbatim).
 function itemKeyFor(name, size){ return name + '__' + size; }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function showAlert(message){
+  const existing = document.getElementById('formAlertOverlay');
+  if(existing) existing.remove();
+  const overlay = document.createElement('div');
+  overlay.className = 'form-alert-overlay';
+  overlay.id = 'formAlertOverlay';
+  overlay.innerHTML = `
+    <div class="form-alert-box">
+      <div class="form-alert-icon">⚠️</div>
+      <div class="form-alert-message">${esc(message)}</div>
+      <button type="button" class="form-alert-ok-btn" id="formAlertOkBtn">OK</button>
+    </div>`;
+  document.body.appendChild(overlay);
+  const close = ()=>{ overlay.remove(); };
+  overlay.addEventListener('click', (e)=>{ if(e.target===overlay) close(); });
+  overlay.querySelector('#formAlertOkBtn').addEventListener('click', close);
+}
 
 // Used only as an offline fallback if the live catalog can't be fetched from
 // Order Ops — the real source of truth is the shared "catalogItems" backend key.
@@ -643,7 +678,7 @@ async function loadDirectTrackOrder(){
 
 async function searchOrdersByPhone(){
   const phone = trackPhone.trim();
-  if(!/^\d{10}$/.test(phone)){ alert('Enter a valid 10-digit WhatsApp number.'); return; }
+  if(!/^\d{10}$/.test(phone)){ showAlert('Enter a valid 10-digit WhatsApp number.'); return; }
   trackSearching = true; render();
   try{
     const data = await orderOpsFetchAll();
@@ -1046,6 +1081,11 @@ function updateMeta(el){
 
 function resetAll(){
   CATALOG.forEach(cat => cat.items.forEach(it => { it.qty=''; it.cases=''; }));
+  custName = ''; custPhone = ''; custCity = ''; custAddress = ''; custGstin = '';
+  custDate = new Date().toISOString().slice(0,10);
+  phoneMasked = false;
+  formErrors = { custName:false, custPhone:false, custCity:false };
+  searchQuery = '';
   render();
 }
 
@@ -1190,7 +1230,10 @@ function showOrderSuccess(trackLink){
     try{ await navigator.clipboard.writeText(trackLink); copyBtn.textContent = '✓ Copied'; }
     catch(e){ prompt('Copy this tracking link:', trackLink); }
   });
-  document.getElementById('closeSuccessBtn').addEventListener('click', closeOrderConfirm);
+  document.getElementById('closeSuccessBtn').addEventListener('click', ()=>{
+    closeOrderConfirm();
+    resetAll(); // order sent to company — start fresh for the next one
+  });
 }
 function closeOrderConfirm(){
   const o = document.getElementById('orderConfirmOverlay');
