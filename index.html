@@ -554,11 +554,13 @@ async function loadLiveCatalog(){
       CATALOG = groupFlatCatalogItems(data.catalogItems);
       preprocessCatalog();
     }
+    knownCustomers = data.customers || [];
   }catch(e){
     console.error('Could not load live catalog, using built-in fallback', e);
   }
 }
 
+let knownCustomers = [];
 let custName = '';
 let custPhone = '';
 let custCity = '';
@@ -617,7 +619,17 @@ async function loadDirectTrackOrder(){
     if(order.status === 'processed' && order.processedAt && (Date.now() - order.processedAt) > TRACK_EXPIRY_MS){
       trackDirectState = 'expired'; render(); return;
     }
-    trackDirectOrder = order;
+    // Party details are shown LIVE from the customer record (not the frozen
+    // snapshot on the order) — if the office fixes a wrong city/phone/etc.
+    // afterwards, this page reflects it immediately without a new link.
+    const liveCust = order.customerId ? (data.customers||[]).find(c=>c.id===order.customerId) : null;
+    trackDirectOrder = liveCust ? {
+      ...order,
+      customerCity: liveCust.city || order.customerCity,
+      customerPhone: liveCust.phone || order.customerPhone,
+      customerAddress: liveCust.address || order.customerAddress,
+      customerGstin: liveCust.gstin || order.customerGstin,
+    } : order;
     trackDirectState = 'found';
   }catch(e){
     console.error(e);
@@ -657,7 +669,7 @@ function trackStageHtml(order){
   if(isRejected) return '';
   const stages = TRACK_STAGE_ORDER.map((s,i)=>{
     const cls = i < stageIdx ? 'done' : i === stageIdx ? 'current' : '';
-    const icon = cls === 'done' ? '✓' : (i+1);
+    const icon = (cls === 'done' || cls === 'current') ? '✓' : (i+1);
     return `<div class="track-stage ${cls}"><div class="dot">${icon}</div><div class="lbl">${TRACK_STAGE_LABEL[s]}</div></div>`;
   }).join('');
   return `<div class="track-stage-row">${stages}</div>`;
@@ -681,12 +693,34 @@ function trackFmtQtyPreferCase(qty, caseSize){
 }
 function trackOrderCardHtml(order){
   const status = order.status || 'pending';
-  const itemsHtml = (order.items||[]).map(it=>{
+  const showItemStatus = status !== 'pending' && status !== 'rejected'; // per-item detail only makes sense once accepted
+  const activeItems = (order.items||[]).filter(it=>!it.cancelled);
+  const cancelledItems = (order.items||[]).filter(it=>it.cancelled);
+  const itemRow = (it)=>{
     const caseSize = trackFindCaseSize(it.key);
     const preferred = trackFmtQtyPreferCase(it.qty, caseSize);
-    return `<div class="track-item-row"><span>${esc(it.name)} <span style="color:var(--ink-soft);">${esc(it.size)}</span></span><span class="q">${preferred} <span style="font-weight:400;color:var(--ink-soft);font-size:10.5px;">(${it.qty} pc)</span></span></div>`;
-  }).join('');
+    const qtyPart = `<span class="q">${preferred} <span style="font-weight:400;color:var(--ink-soft);font-size:10.5px;">(${it.qty} pc)</span></span>`;
+    let statusTag = '';
+    if(showItemStatus){
+      statusTag = it.packed
+        ? `<span style="color:var(--green);font-weight:700;font-size:10.5px;"> ✅ Ready</span>`
+        : `<span style="color:var(--gold);font-weight:700;font-size:10.5px;"> 🔧 Under Packing</span>`;
+    }
+    return `<div class="track-item-row"><span>${esc(it.name)} <span style="color:var(--ink-soft);">${esc(it.size)}</span>${statusTag}</span>${qtyPart}</div>`;
+  };
+  const itemsHtml = activeItems.map(itemRow).join('');
+  const cancelledHtml = cancelledItems.length ? `
+    <div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);">
+      <div style="font-size:10px;color:var(--red);text-transform:uppercase;letter-spacing:0.03em;font-weight:700;margin-bottom:4px;">Cancelled items</div>
+      ${cancelledItems.map(it=>`<div class="track-item-row" style="opacity:0.6;text-decoration:line-through;"><span>${esc(it.name)} <span style="color:var(--ink-soft);">${esc(it.size)}</span></span><span class="q">${it.qty} pc</span></div>`).join('')}
+    </div>` : '';
   const dateStr = new Date(order.createdAt).toLocaleDateString(undefined,{day:'2-digit',month:'short',year:'numeric'});
+  const dispatchHtml = (status==='processed' && order.transportName) ? `
+    <div style="background:var(--green-pale);border-radius:11px;padding:12px 14px;margin-bottom:12px;">
+      <div style="font-weight:700;font-size:13.5px;color:var(--green-dark);">🚚 ${esc(order.transportName)}</div>
+      ${order.dispatchedAt ? `<div style="font-size:11px;color:var(--ink-soft);margin-top:2px;">Booked ${new Date(order.dispatchedAt).toLocaleDateString(undefined,{day:'2-digit',month:'short',year:'numeric'})}</div>` : ''}
+      ${order.totalCases ? `<div style="font-size:11.5px;margin-top:4px;">Total no of Cases Booked - <b>${order.totalCases}</b></div>` : ''}
+    </div>` : '';
   return `
     <div class="track-order-card">
       <div class="track-greeting">Hello, ${esc(order.customerName||'there')}! 👋</div>
@@ -701,7 +735,8 @@ function trackOrderCardHtml(order){
       </div>
       ${trackStageHtml(order)}
       <div class="track-status-banner ${status}">${TRACK_STATUS_TEXT[status]||''}</div>
-      <div class="track-items-list">${itemsHtml}</div>
+      ${dispatchHtml}
+      <div class="track-items-list">${itemsHtml}${cancelledHtml}</div>
     </div>`;
 }
 // Phone-search results only ever show party name + status — full item-level
@@ -848,7 +883,8 @@ function render(){
         </div>
         <div class="field">
           <label>Customer / Party <span class="required-mark">*</span></label>
-          <input id="custName" class="${formErrors.custName?'input-error':''}" value="${custName}" placeholder="Customer name" oninput="updateMeta(this)">
+          <input id="custName" list="custNameList" class="${formErrors.custName?'input-error':''}" value="${custName}" placeholder="Customer name" oninput="updateMeta(this)" autocomplete="off">
+          <datalist id="custNameList">${knownCustomers.map(c=>`<option value="${esc(c.name)}"></option>`).join('')}</datalist>
           ${formErrors.custName ? '<div class="field-error">Party name is required</div>' : ''}
         </div>
         <div class="field">
@@ -956,7 +992,21 @@ function updateField(id, field, val){
 }
 
 function updateMeta(el){
-  if(el.id==='custName') custName = el.value;
+  if(el.id==='custName'){
+    custName = el.value;
+    // Existing party typed/selected exactly -> pre-fill their saved details (still editable).
+    const match = knownCustomers.find(c => (c.name||'').trim().toLowerCase() === el.value.trim().toLowerCase());
+    if(match){
+      custPhone = match.phone || custPhone;
+      custCity = match.city || custCity;
+      custAddress = match.address || custAddress;
+      custGstin = match.gstin || custGstin;
+      render();
+      const input = document.getElementById('custName');
+      if(input){ input.focus(); const v = input.value; input.value=''; input.value=v; input.setSelectionRange(v.length, v.length); }
+      return;
+    }
+  }
   if(el.id==='custPhone') custPhone = el.value;
   if(el.id==='custCity') custCity = el.value;
   if(el.id==='custAddress') custAddress = el.value;
