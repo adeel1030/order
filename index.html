@@ -594,9 +594,38 @@ async function loadLiveCatalog(){
     console.error('Could not load live catalog, using built-in fallback', e);
   }
 }
+function isUserTyping(){
+  const el = document.activeElement;
+  return !!(el && (el.tagName==='INPUT' || el.tagName==='TEXTAREA'));
+}
+// Background refresh (every 5s) — same as loadLiveCatalog but preserves
+// whatever quantities the person has already typed in, keyed by item, so a
+// live catalog update never wipes out an order in progress.
+async function refreshLiveCatalogSilent(){
+  try{
+    const data = await orderOpsFetchAll();
+    if(data.catalogItems && data.catalogItems.length){
+      const preserved = {};
+      CATALOG.forEach(cat => cat.items.forEach(it => {
+        if(it.qty || it.cases) preserved[it.key] = { qty: it.qty, cases: it.cases };
+      }));
+      CATALOG = groupFlatCatalogItems(data.catalogItems);
+      preprocessCatalog();
+      CATALOG.forEach(cat => cat.items.forEach(it => {
+        const p = preserved[it.key];
+        if(p){ it.qty = p.qty; it.cases = p.cases; }
+      }));
+    }
+    knownCustomers = data.customers || [];
+    if(!isUserTyping()) render();
+  }catch(e){
+    console.error('Live refresh hiccup (will retry in 5s)', e);
+  }
+}
 
 let knownCustomers = [];
 let phoneMasked = false;
+let partyLocked = false;
 let custName = '';
 let custPhone = '';
 let custCity = '';
@@ -646,8 +675,8 @@ function closeTrackMode(){
   render();
 }
 
-async function loadDirectTrackOrder(){
-  trackDirectState = 'loading'; render();
+async function loadDirectTrackOrder(silent){
+  if(!silent){ trackDirectState = 'loading'; render(); }
   try{
     const data = await orderOpsFetchAll();
     const dayOrders = data['orders_' + trackDirectDay] || [];
@@ -671,15 +700,15 @@ async function loadDirectTrackOrder(){
     trackDirectState = 'found';
   }catch(e){
     console.error(e);
-    trackDirectState = 'error';
+    if(!silent) trackDirectState = 'error'; // a background refresh hiccup shouldn't blow away a working view
   }
   render();
 }
 
-async function searchOrdersByPhone(){
+async function searchOrdersByPhone(silent){
   const phone = trackPhone.trim();
-  if(!/^\d{10}$/.test(phone)){ showAlert('Enter a valid 10-digit WhatsApp number.'); return; }
-  trackSearching = true; render();
+  if(!/^\d{10}$/.test(phone)){ if(!silent) showAlert('Enter a valid 10-digit WhatsApp number.'); return; }
+  if(!silent){ trackSearching = true; render(); }
   try{
     const data = await orderOpsFetchAll();
     const customers = data.customers || [];
@@ -695,7 +724,7 @@ async function searchOrdersByPhone(){
     trackResults = results;
   }catch(e){
     console.error(e);
-    trackResults = 'error';
+    if(!silent) trackResults = 'error';
   }
   trackSearching = false; render();
 }
@@ -932,22 +961,22 @@ function render(){
         </div>
         <div class="field">
           <label>WhatsApp Number <span class="required-mark">*</span></label>
-          <input id="custPhone" type="tel" inputmode="numeric" maxlength="10" class="${formErrors.custPhone?'input-error':''}" value="${phoneMasked?maskPhone(custPhone):custPhone}" placeholder="10-digit WhatsApp number" oninput="updateMeta(this)" onfocus="revealPhone()">
-          ${phoneMasked ? `<div class="mono" style="margin-top:4px;font-size:10px;">Saved number — tap to view/edit</div>` : ''}
+          <input id="custPhone" type="tel" inputmode="numeric" maxlength="10" ${partyLocked?'readonly style="background:var(--bg-warm);color:var(--ink-soft);"':''} class="${formErrors.custPhone?'input-error':''}" value="${phoneMasked?maskPhone(custPhone):custPhone}" placeholder="10-digit WhatsApp number" oninput="updateMeta(this)">
+          ${partyLocked ? `<div class="mono" style="margin-top:4px;font-size:10px;">🔒 Existing customer — number on file. Change the party name above to edit.</div>` : ''}
           ${formErrors.custPhone ? `<div class="field-error">${custPhone.trim() ? 'Enter a valid 10-digit number' : 'WhatsApp number is required'}</div>` : ''}
         </div>
         <div class="field">
           <label>City <span class="required-mark">*</span></label>
-          <input id="custCity" class="${formErrors.custCity?'input-error':''}" value="${custCity}" placeholder="e.g. Jaipur" oninput="updateMeta(this)">
+          <input id="custCity" ${partyLocked?'readonly style="background:var(--bg-warm);color:var(--ink-soft);"':''} class="${formErrors.custCity?'input-error':''}" value="${custCity}" placeholder="e.g. Jaipur" oninput="updateMeta(this)">
           ${formErrors.custCity ? '<div class="field-error">City is required</div>' : ''}
         </div>
         <div class="field">
           <label>Customer Address (optional)</label>
-          <input id="custAddress" value="${custAddress}" placeholder="Customer Address" oninput="updateMeta(this)">
+          <input id="custAddress" ${partyLocked?'readonly style="background:var(--bg-warm);color:var(--ink-soft);"':''} value="${custAddress}" placeholder="Customer Address" oninput="updateMeta(this)">
         </div>
         <div class="field">
           <label>GSTIN (optional)</label>
-          <input id="custGstin" value="${custGstin}" placeholder="22AAAAA0000A1Z5" style="text-transform:uppercase;" oninput="updateMeta(this)">
+          <input id="custGstin" ${partyLocked?'readonly style="background:var(--bg-warm);color:var(--ink-soft);text-transform:uppercase;"':'style="text-transform:uppercase;"'} value="${custGstin}" placeholder="22AAAAA0000A1Z5" oninput="updateMeta(this)">
         </div>
       </div>
     </header>
@@ -1039,13 +1068,6 @@ function maskPhone(p){
   p = String(p||'').trim();
   return p.length>=4 ? '••••••'+p.slice(-4) : p;
 }
-function revealPhone(){
-  if(!phoneMasked) return;
-  phoneMasked = false;
-  render();
-  const el = document.getElementById('custPhone');
-  if(el){ el.focus(); const v = el.value; el.value=''; el.value=v; el.setSelectionRange(v.length, v.length); }
-}
 function updateMeta(el){
   if(el.id==='custName'){
     // The dropdown shows "Name (City)" as a hint — strip that back off
@@ -1057,7 +1079,8 @@ function updateMeta(el){
       custCity = match.city || custCity;
       custAddress = match.address || custAddress;
       custGstin = match.gstin || custGstin;
-      if(match.phone){ custPhone = match.phone; phoneMasked = true; } // shown masked until the person clicks in to edit it
+      if(match.phone){ custPhone = match.phone; phoneMasked = true; }
+      partyLocked = true; // existing party — details come from the office record, not editable here
       render();
       const input = document.getElementById('custName');
       if(input){ input.focus(); const v = input.value; input.value=''; input.value=v; input.setSelectionRange(v.length, v.length); }
@@ -1065,7 +1088,18 @@ function updateMeta(el){
     }
     custName = el.value;
     phoneMasked = false;
+    const wasLocked = partyLocked;
+    partyLocked = false; // no longer matches a known party — free to enter fresh details
+    if(wasLocked){
+      // Just unlocked — the other fields' readonly state needs a re-render
+      // to actually clear (their DOM attributes were baked in at last render).
+      render();
+      const input = document.getElementById('custName');
+      if(input){ input.focus(); const v = input.value; input.value=''; input.value=v; input.setSelectionRange(v.length, v.length); }
+      return;
+    }
   }
+  if(partyLocked) return; // locked fields ignore direct edits — change the party name to unlock
   if(el.id==='custPhone'){ phoneMasked = false; custPhone = el.value; }
   if(el.id==='custCity') custCity = el.value;
   if(el.id==='custAddress') custAddress = el.value;
@@ -1084,6 +1118,7 @@ function resetAll(){
   custName = ''; custPhone = ''; custCity = ''; custAddress = ''; custGstin = '';
   custDate = new Date().toISOString().slice(0,10);
   phoneMasked = false;
+  partyLocked = false;
   formErrors = { custName:false, custPhone:false, custCity:false };
   searchQuery = '';
   render();
@@ -1293,6 +1328,21 @@ async function finalizeSubmitOrder(){
 
 render(); // show immediately with the built-in catalog, no blank/loading screen
 loadLiveCatalog().then(()=>render()); // then swap in the live one once it arrives
+
+// Live sync every 5s — keeps catalog/customers fresh while building an
+// order (skipped while actively typing so it never disrupts a keystroke),
+// and keeps the tracking view's status current without needing a refresh.
+setInterval(()=>{
+  if(pageMode === 'track'){
+    if(trackDirectId && trackDirectState === 'found'){
+      loadDirectTrackOrder(true);
+    } else if(Array.isArray(trackResults)){
+      searchOrdersByPhone(true);
+    }
+  } else if(pageMode === 'order'){
+    refreshLiveCatalogSilent();
+  }
+}, 5000);
 </script>
 </body>
 </html>
