@@ -561,6 +561,7 @@ async function loadLiveCatalog(){
 }
 
 let knownCustomers = [];
+let phoneMasked = false;
 let custName = '';
 let custPhone = '';
 let custCity = '';
@@ -587,6 +588,7 @@ let pageMode = 'order'; // 'order' | 'track'
 let trackDirectId = null, trackDirectDay = null;
 let trackDirectState = 'idle'; // idle -> loading -> found|not_found|expired|error
 let trackDirectOrder = null;
+let trackReadyStock = {};
 let trackPhone = '';
 let trackSearching = false;
 let trackResults = null; // null = not searched, [] = no matches, array = matches
@@ -630,6 +632,7 @@ async function loadDirectTrackOrder(){
       customerAddress: liveCust.address || order.customerAddress,
       customerGstin: liveCust.gstin || order.customerGstin,
     } : order;
+    trackReadyStock = data.readyStock || {}; // used to derive each item's live Ready/Under Packing status
     trackDirectState = 'found';
   }catch(e){
     console.error(e);
@@ -702,7 +705,12 @@ function trackOrderCardHtml(order){
     const qtyPart = `<span class="q">${preferred} <span style="font-weight:400;color:var(--ink-soft);font-size:10.5px;">(${it.qty} pc)</span></span>`;
     let statusTag = '';
     if(showItemStatus){
-      statusTag = it.packed
+      // Once the order itself has reached Ready (or beyond), every
+      // remaining item is definitionally Ready. While still Processing,
+      // derive it live from current stock — the same automatic check that
+      // drives the order's own Processing -> Ready transition.
+      const isReady = (status==='ready' || status==='processed') || (trackReadyStock[it.key]||0) >= 0;
+      statusTag = isReady
         ? `<span style="color:var(--green);font-weight:700;font-size:10.5px;"> ✅ Ready</span>`
         : `<span style="color:var(--gold);font-weight:700;font-size:10.5px;"> 🔧 Under Packing</span>`;
     }
@@ -884,12 +892,13 @@ function render(){
         <div class="field">
           <label>Customer / Party <span class="required-mark">*</span></label>
           <input id="custName" list="custNameList" class="${formErrors.custName?'input-error':''}" value="${custName}" placeholder="Customer name" oninput="updateMeta(this)" autocomplete="off">
-          <datalist id="custNameList">${knownCustomers.map(c=>`<option value="${esc(c.name)}"></option>`).join('')}</datalist>
+          <datalist id="custNameList">${knownCustomers.map(c=>`<option value="${esc(c.name)}${c.city?` (${esc(c.city)})`:''}"></option>`).join('')}</datalist>
           ${formErrors.custName ? '<div class="field-error">Party name is required</div>' : ''}
         </div>
         <div class="field">
           <label>WhatsApp Number <span class="required-mark">*</span></label>
-          <input id="custPhone" type="tel" inputmode="numeric" maxlength="10" class="${formErrors.custPhone?'input-error':''}" value="${custPhone}" placeholder="10-digit WhatsApp number" oninput="updateMeta(this)">
+          <input id="custPhone" type="tel" inputmode="numeric" maxlength="10" class="${formErrors.custPhone?'input-error':''}" value="${phoneMasked?maskPhone(custPhone):custPhone}" placeholder="10-digit WhatsApp number" oninput="updateMeta(this)" onfocus="revealPhone()">
+          ${phoneMasked ? `<div class="mono" style="margin-top:4px;font-size:10px;">Saved number — tap to view/edit</div>` : ''}
           ${formErrors.custPhone ? `<div class="field-error">${custPhone.trim() ? 'Enter a valid 10-digit number' : 'WhatsApp number is required'}</div>` : ''}
         </div>
         <div class="field">
@@ -991,23 +1000,38 @@ function updateField(id, field, val){
   if(input){ input.focus(); const v=input.value; input.value=''; input.value=v; }
 }
 
+function maskPhone(p){
+  p = String(p||'').trim();
+  return p.length>=4 ? '••••••'+p.slice(-4) : p;
+}
+function revealPhone(){
+  if(!phoneMasked) return;
+  phoneMasked = false;
+  render();
+  const el = document.getElementById('custPhone');
+  if(el){ el.focus(); const v = el.value; el.value=''; el.value=v; el.setSelectionRange(v.length, v.length); }
+}
 function updateMeta(el){
   if(el.id==='custName'){
-    custName = el.value;
-    // Existing party typed/selected exactly -> pre-fill their saved details (still editable).
-    const match = knownCustomers.find(c => (c.name||'').trim().toLowerCase() === el.value.trim().toLowerCase());
+    // The dropdown shows "Name (City)" as a hint — strip that back off
+    // before matching or storing, so the field itself stays a clean name.
+    const typedClean = el.value.replace(/\s*\([^)]*\)\s*$/, '').trim();
+    const match = knownCustomers.find(c => (c.name||'').trim().toLowerCase() === typedClean.toLowerCase());
     if(match){
-      custPhone = match.phone || custPhone;
+      custName = match.name; // normalized, no "(City)" suffix left in the field
       custCity = match.city || custCity;
       custAddress = match.address || custAddress;
       custGstin = match.gstin || custGstin;
+      if(match.phone){ custPhone = match.phone; phoneMasked = true; } // shown masked until the person clicks in to edit it
       render();
       const input = document.getElementById('custName');
       if(input){ input.focus(); const v = input.value; input.value=''; input.value=v; input.setSelectionRange(v.length, v.length); }
       return;
     }
+    custName = el.value;
+    phoneMasked = false;
   }
-  if(el.id==='custPhone') custPhone = el.value;
+  if(el.id==='custPhone'){ phoneMasked = false; custPhone = el.value; }
   if(el.id==='custCity') custCity = el.value;
   if(el.id==='custAddress') custAddress = el.value;
   if(el.id==='custGstin') custGstin = el.value;
