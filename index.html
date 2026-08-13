@@ -446,93 +446,7 @@ function showAlert(message){
 
 // Used only as an offline fallback if the live catalog can't be fetched from
 // Order Ops — the real source of truth is the shared "catalogItems" backend key.
-const DEFAULT_CATALOG = [
-  { cat:"Olife Gold — Pure Olive Oil", items:[
-    {name:"Olife Gold", size:"100mL", mrp:229},
-    {name:"Olife Gold", size:"200mL", mrp:399},
-    {name:"Olife Gold", size:"500mL", mrp:799},
-    {name:"Olife Gold", size:"1L", mrp:1100},
-  ]},
-  { cat:"Olife EV — Extra Virgin Olive Oil", items:[
-    {name:"Olife EV", size:"100mL", mrp:299},
-    {name:"Olife EV", size:"200mL", mrp:499},
-    {name:"Olife EV", size:"500mL", mrp:899},
-    {name:"Olife EV", size:"1L", mrp:1550},
-  ]},
-  { cat:"Castor Oil", items:[
-    {name:"Castor Oil", size:"25 ml", mrp:40},
-    {name:"Castor Oil", size:"50 ml", mrp:75},
-    {name:"Castor Oil", size:"100 ml", mrp:125},
-    {name:"Castor Oil", size:"200mL", mrp:250},
-  ]},
-  { cat:"Roghan Badam — (Almond Oil)", items:[
-    {name:"Roghan Badam", size:"10 ml", mrp:54},
-    {name:"Roghan Badam", size:"25 ml", mrp:120},
-    {name:"Roghan Badam", size:"50 ml", mrp:230},
-    {name:"Roghan Badam", size:"100 ml", mrp:440},
-  ]},
-  { cat:"Chameli Oil — (Jasmin Oil)", items:[
-    {name:"Chameli Oil", size:"25 ml", mrp:35},
-    {name:"Chameli Oil", size:"50 ml", mrp:60},
-    {name:"Chameli Oil", size:"100 ml", mrp:110},
-  ]},
-  { cat:"Neem Oil", items:[
-    {name:"Neem Oil", size:"25 ml", mrp:40},
-    {name:"Neem Oil", size:"50 ml", mrp:75},
-    {name:"Neem Oil", size:"100 ml", mrp:125},
-  ]},
-  { cat:"Kalonji Oil — (Nigella Sativa Seed Oil)", items:[
-    {name:"Kalonji Oil", size:"25 ml", mrp:115},
-    {name:"Kalonji Oil", size:"50 ml", mrp:195},
-    {name:"Kalonji Oil", size:"100 ml", mrp:340},
-    {name:"Kalonji Oil", size:"200mL", mrp:650},
-  ]},
-  { cat:"Oliva — Olive Oil With Outer Box", items:[
-    {name:"Oliva", size:"25 ml", mrp:55},
-    {name:"Oliva", size:"50 ml", mrp:100},
-    {name:"Oliva", size:"100 ml", mrp:180},
-    {name:"Oliva", size:"200 ml", mrp:330},
-    {name:"Oliva", size:"440 ml", mrp:550},
-  ]},
-  { cat:"Til Oil — (Sesame Oil)", items:[
-    {name:"Til Oil", size:"50 ml", mrp:80},
-    {name:"Til Oil", size:"100 ml", mrp:155},
-    {name:"Til Oil", size:"200 ml", mrp:350},
-  ]},
-  { cat:"Tarpin Oil", items:[
-    {name:"Tarpin Oil", size:"25 ml", mrp:35},
-    {name:"Tarpin Oil", size:"50 ml", mrp:65},
-  ]},
-  { cat:"Roghan Amla", items:[
-    {name:"Roghan Amla", size:"100ml", mrp:80},
-  ]},
-  { cat:"Alsi Oil — (Flaxseed Oil)", items:[
-    {name:"Alsi Oil", size:"50 mL", mrp:75},
-    {name:"Alsi Oil", size:"100 mL", mrp:125},
-    {name:"Alsi Oil", size:"200mL", mrp:270},
-  ]},
-  { cat:"Clove Oil — (Long Oil)", items:[
-    {name:"Clove Oil", size:"3 ml", mrp:30},
-  ]},
-  { cat:"Zeytin Green", items:[
-    {name:"Zeytin Green", size:"100mL", mrp:250},
-    {name:"Zeytin Green", size:"200mL", mrp:425},
-    {name:"Zeytin Green", size:"500mL", mrp:799},
-    {name:"Zeytin Green", size:"1L", mrp:1100},
-  ]},
-  { cat:"Zeytin EV", items:[
-    {name:"Zeytin EV", size:"100mL", mrp:299},
-    {name:"Zeytin EV", size:"200mL", mrp:499},
-    {name:"Zeytin EV", size:"1L", mrp:1550},
-  ]},
-  { cat:"Olio Classico Pure", items:[
-    {name:"Olio Classico Pure", size:"100mL", mrp:229},
-    {name:"Olio Classico Pure", size:"200mL", mrp:399},
-  ]},
-  { cat:"Olio Classico EV", items:[
-    {name:"Olio Classico EV", size:"200mL", mrp:499},
-  ]},
-];
+// DEFAULT_CATALOG removed — the form now only ever shows live data from Order Ops (see loadLiveCatalog / catalogLoaded below).
 
 // ---------- Case (box) size rules ----------
 const DEFAULT_CASE_SIZE = {
@@ -573,7 +487,7 @@ function getCaseSize(item){
 }
 
 let idCounter = 0;
-let CATALOG = DEFAULT_CATALOG;
+let CATALOG = [];
 function preprocessCatalog(){
   idCounter = 0;
   CATALOG.sort((a,b)=>a.cat.localeCompare(b.cat));
@@ -602,17 +516,56 @@ function groupFlatCatalogItems(flatItems){
 // Pulls the live, shared catalog from Order Ops (same data admin manages in
 // Stock ▸ + Add item) so this form always matches what's actually stocked.
 // Falls back to the last-known/default catalog if offline.
+let catalogLoaded = false;
+let catalogLoadFailed = false;
+function renderCatalogLoadingScreen(){
+  return `<div style="min-height:70vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:20px;">
+    <img src="${COMPANY_LOGO}" alt="${COMPANY_NAME}" style="width:64px;height:64px;border-radius:16px;object-fit:contain;background:#fff;border:1px solid var(--border);padding:6px;margin-bottom:18px;" />
+    <div class="track-spinner" style="margin-bottom:16px;"></div>
+    <div style="font-weight:700;font-size:14px;">Loading order form…</div>
+    <div style="font-size:12px;color:var(--ink-soft);margin-top:4px;">Fetching the latest products from M A Products INDIA</div>
+  </div>`;
+}
+function renderCatalogFailedScreen(){
+  return `<div style="min-height:70vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:20px;">
+    <img src="${COMPANY_LOGO}" alt="${COMPANY_NAME}" style="width:64px;height:64px;border-radius:16px;object-fit:contain;background:#fff;border:1px solid var(--border);padding:6px;margin-bottom:14px;" />
+    <div style="font-size:34px;margin-bottom:8px;">📡</div>
+    <div style="font-weight:700;font-size:15px;margin-bottom:6px;">Couldn't load the order form</div>
+    <div style="font-size:12.5px;color:var(--ink-soft);margin-bottom:20px;max-width:280px;">Please check your internet connection and try again.</div>
+    <button type="button" class="track-search-btn" id="retryCatalogBtn" style="padding:12px 28px;">↻ Retry</button>
+  </div>`;
+}
+function bindCatalogFailedScreen(){
+  const btn = document.getElementById('retryCatalogBtn');
+  if(btn) btn.addEventListener('click', async ()=>{
+    catalogLoadFailed = false;
+    render(); // shows the loading spinner while retrying
+    await loadLiveCatalog();
+    render();
+  });
+}
 async function loadLiveCatalog(){
-  try{
-    const data = await orderOpsFetchAll();
-    if(data.catalogItems && data.catalogItems.length){
-      CATALOG = groupFlatCatalogItems(data.catalogItems);
-      preprocessCatalog();
+  const MAX_ATTEMPTS = 3;
+  let lastErr = null;
+  for(let attempt=1; attempt<=MAX_ATTEMPTS; attempt++){
+    try{
+      const data = await orderOpsFetchAll();
+      if(data.catalogItems && data.catalogItems.length){
+        CATALOG = groupFlatCatalogItems(data.catalogItems);
+        preprocessCatalog();
+      }
+      knownCustomers = data.customers || [];
+      catalogLoaded = true;
+      catalogLoadFailed = false;
+      lastErr = null;
+      break;
+    }catch(e){
+      lastErr = e;
+      console.error(`Could not load live catalog (attempt ${attempt}/${MAX_ATTEMPTS})`, e);
+      if(attempt < MAX_ATTEMPTS) await new Promise(r=>setTimeout(r, 1500));
     }
-    knownCustomers = data.customers || [];
-  }catch(e){
-    console.error('Could not load live catalog, using built-in fallback', e);
   }
+  if(lastErr) catalogLoadFailed = true;
 }
 function isUserTyping(){
   const el = document.activeElement;
@@ -942,7 +895,7 @@ function getOrderStats(){
   return { lineCount, totalPieces };
 }
 
-const FORM_BUILD = "2026-08-13-favicon-sizesort-version1";
+const FORM_BUILD = "2026-08-13-nofallback1";
 const dropIcon = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C12 2 5 11.5 5 15.5C5 19.09 8.13 22 12 22C15.87 22 19 19.09 19 15.5C19 11.5 12 2 12 2Z" fill="white"/></svg>`;
 const COMPANY_LOGO = "https://static.wixstatic.com/media/f34ac6_16010ac0fe9c48739c4860abefec3cbb~mv2.png/v1/fill/w_410,h_409,al_c,lg_1,q_85,enc_avif,quality_auto/M%20A%20Products%20INDIA%20Logo.png";
 const COMPANY_NAME = "M A Products INDIA";
@@ -953,6 +906,11 @@ const waIcon = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmln
 function render(){
   const app = document.getElementById('app');
   if(pageMode === 'track'){ renderTrackMode(); return; }
+  if(!catalogLoaded){
+    app.innerHTML = catalogLoadFailed ? renderCatalogFailedScreen() : renderCatalogLoadingScreen();
+    if(catalogLoadFailed) bindCatalogFailedScreen();
+    return;
+  }
   const { lineCount, totalPieces } = getOrderStats();
   const anyQty = lineCount > 0;
 
@@ -1348,8 +1306,8 @@ async function finalizeSubmitOrder(){
 }
 
 document.getElementById('buildFooter').textContent = 'build ' + FORM_BUILD;
-render(); // show immediately with the built-in catalog, no blank/loading screen
-loadLiveCatalog().then(()=>render()); // then swap in the live one once it arrives
+render(); // shows the loading screen (catalogLoaded starts false) — no hardcoded fallback data anymore
+loadLiveCatalog().then(()=>render()); // then swaps in the real order form once live data arrives
 
 // Live sync every 5s — keeps catalog/customers fresh while building an
 // order (skipped while actively typing so it never disrupts a keystroke),
