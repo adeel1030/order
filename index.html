@@ -1,0 +1,1370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" type="image/png" href="icon-512.png">
+<link rel="apple-touch-icon" href="icon-512.png">
+<title>Order - M A Products INDIA</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#F1EFE4;
+    --bg-warm:#EBE6D3;
+    --card:#FFFFFF;
+    --ink:#242A1E;
+    --ink-soft:#63644F;
+    --border:#DAD5C2;
+    --green:#2E5B2A;
+    --green-dark:#1E3E1B;
+    --green-pale:#E7EEE1;
+    --red:#B3271E;
+    --gold:#B98A2E;
+    --gold-light:#F3E3C1;
+    --row-alt:#F8F7F0;
+    --wa:#25D366;
+    --wa-dark:#128C4A;
+  }
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{
+    margin:0;
+    background:
+      radial-gradient(ellipse 900px 500px at 15% -5%, var(--bg-warm), transparent 60%),
+      var(--bg);
+    color:var(--ink);
+    font-family:'Inter',sans-serif;
+    padding:24px 16px 130px;
+  }
+  .wrap{max-width:560px;margin:0 auto;}
+
+  /* ---------- Header ---------- */
+  header{
+    background:var(--card);
+    border:1px solid var(--border);
+    border-radius:18px;
+    padding:26px 24px 22px;
+    margin-bottom:20px;
+    box-shadow:0 1px 2px rgba(36,42,30,0.04), 0 8px 24px -12px rgba(36,42,30,0.12);
+    position:relative;
+    overflow:hidden;
+  }
+  header::before{
+    content:'';
+    position:absolute; top:0; left:0; right:0; height:4px;
+    background:linear-gradient(90deg, var(--green) 0%, var(--gold) 55%, var(--green) 100%);
+  }
+  .brand{ text-align:center; margin-bottom:20px; }
+  .brand-logo-img{
+    display:block; width:56px; height:56px; border-radius:14px;
+    object-fit:contain; background:#fff; border:1px solid var(--border);
+    padding:5px; margin:0 auto 10px;
+  }
+  .brand h1{
+    font-family:'Fraunces',serif;
+    font-optical-sizing:auto;
+    font-size:25px;
+    font-weight:700;
+    color:var(--green-dark);
+    margin:0 0 4px;
+    letter-spacing:-0.01em;
+  }
+  .brand .tag{
+    color:var(--red);
+    font-weight:700;
+    font-size:20px;
+    text-transform:uppercase;
+    letter-spacing:0.09em;
+    margin-bottom:10px;
+  }
+  .brand .addr{color:var(--ink-soft);font-size:12.5px;line-height:1.6;}
+  .brand .addr b{color:var(--ink);font-weight:600;}
+
+  /* ---------- Item search ---------- */
+  .search-box{
+    position:relative;margin-bottom:14px;
+  }
+  .search-box input{
+    width:100%;padding:12px 40px 12px 14px;border:1.5px solid var(--border);border-radius:12px;
+    font-family:'Inter',sans-serif;font-size:14px;background:var(--card);
+    box-shadow:0 1px 2px rgba(36,42,30,0.03);
+    transition:border-color .15s ease;
+  }
+  .search-box input:focus{outline:none;border-color:var(--green);}
+  .search-clear{
+    position:absolute;right:8px;top:50%;transform:translateY(-50%);
+    background:var(--row-alt);border:none;color:var(--ink-soft);
+    width:26px;height:26px;border-radius:50%;cursor:pointer;font-size:13px;
+  }
+
+  .meta-fields{
+    display:grid;
+    grid-template-columns:1fr;
+    gap:12px;
+  }
+  .meta-fields .field.full{grid-column:1 / -1;}
+  .meta-fields .field{display:flex;flex-direction:column;gap:6px;}
+  .meta-fields label{
+    font-size:10.5px;color:var(--ink-soft);font-weight:700;
+    text-transform:uppercase;letter-spacing:0.05em;
+  }
+  .meta-fields input{
+    padding:9px 12px;border:1.5px solid var(--border);border-radius:10px;
+    font-family:'Inter',sans-serif;font-size:14px;width:100%;
+    background:var(--row-alt);
+    transition:border-color .15s ease, background .15s ease;
+  }
+  .meta-fields input:focus{
+    outline:none; border-color:var(--green); background:#fff;
+  }
+  .meta-fields input.input-error{
+    border-color:var(--red); background:#FBEDEC;
+  }
+  .field-error{
+    color:var(--red); font-size:11px; font-weight:600; margin-top:-2px;
+  }
+  .required-mark{color:var(--red);}
+
+  /* ---------- Categories ---------- */
+  .category{
+    background:var(--card);
+    border:1px solid var(--border);
+    border-radius:16px;
+    margin-bottom:14px;
+    overflow:hidden;
+    box-shadow:0 1px 2px rgba(36,42,30,0.03);
+  }
+  .category-title{
+    background:var(--green);
+    color:#fff;
+    padding:12px 16px 12px 18px;
+    font-family:'Fraunces',serif;
+    font-weight:600;
+    font-size:15.5px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:9px;
+    width:100%;
+    border:none;
+    cursor:pointer;
+    text-align:left;
+    font-feature-settings:normal;
+  }
+  .category-title svg{flex:none;opacity:0.9;}
+  .cat-title-left{display:flex;align-items:center;gap:9px;}
+  .cat-title-right{display:flex;align-items:center;gap:10px;flex:none;}
+  .cat-badge{
+    background:var(--gold);
+    color:#fff;
+    font-family:'Inter',sans-serif;
+    font-size:11px;
+    font-weight:700;
+    padding:3px 9px;
+    border-radius:20px;
+    white-space:nowrap;
+  }
+  .chevron{transition:transform .18s ease;flex:none;}
+  .category-title.open .chevron{transform:rotate(180deg);}
+  table{width:100%;border-collapse:collapse;}
+  thead th{
+    text-align:center;
+    font-size:9px;
+    text-transform:uppercase;
+    letter-spacing:0.04em;
+    color:var(--ink-soft);
+    padding:9px 5px;
+    border-bottom:1px solid var(--border);
+    font-weight:700;
+    background:var(--row-alt);
+    line-height:1.25;
+  }
+  thead th:first-child{text-align:left;padding-left:14px;}
+  tbody td{
+    padding:8px 4px;
+    border-bottom:1px solid var(--border);
+    text-align:center;
+    font-size:13px;
+  }
+  tbody td:first-child{text-align:left;padding-left:14px;font-weight:500;}
+  tbody tr:last-child td{border-bottom:none;}
+  tbody tr:nth-child(even){background:var(--row-alt);}
+  tbody tr.has-qty{background:var(--gold-light) !important;}
+  tbody tr.has-qty td:first-child{font-weight:700;color:var(--green-dark);}
+  .num{font-variant-numeric:tabular-nums;text-align:center;}
+  th.num{text-align:center;}
+  input.qty-input{
+    width:48px;padding:7px 4px;border:1.5px solid var(--border);border-radius:8px;
+    font-family:'Inter',sans-serif;font-size:13px;text-align:center;font-weight:600;
+    transition:border-color .15s ease;
+  }
+  input.qty-input:focus{outline:none;border-color:var(--green);}
+  input.qty-input:disabled{background:#EFEEE6;color:var(--ink-soft);cursor:not-allowed;}
+  .case-size-hint{display:block;font-size:8.5px;color:var(--ink-soft);font-weight:600;margin-top:2px;}
+  .total-pcs{font-weight:700;color:var(--green-dark);}
+  .dash{color:var(--ink-soft);}
+
+  /* ---------- Summary ---------- */
+  .summary{
+    background:var(--card);
+    border:1px solid var(--border);
+    border-radius:16px;
+    padding:18px 22px;
+    margin-top:6px;
+    box-shadow:0 1px 2px rgba(36,42,30,0.03);
+  }
+  .summary-inner{width:100%;}
+  .sum-row{
+    display:flex;justify-content:space-between;align-items:center;
+    padding:7px 0;font-size:14px;
+  }
+  .sum-row.total{
+    border-top:2px solid var(--green-dark);
+    margin-top:6px;padding-top:12px;
+    font-family:'Fraunces',serif;
+    font-weight:700;font-size:18px;color:var(--green-dark);
+  }
+
+  /* ---------- Actions ---------- */
+  .actions-row{
+    display:flex;justify-content:center;margin-top:16px;
+  }
+  .btn-reset{
+    background:transparent;color:var(--ink-soft);border:1.5px solid var(--border);
+    font-family:'Inter',sans-serif;font-weight:600;font-size:13px;
+    padding:10px 20px;border-radius:9px;cursor:pointer;
+  }
+  .btn-reset:hover{border-color:var(--ink-soft);color:var(--ink);}
+
+  /* ---------- Sticky WhatsApp bar ---------- */
+  .sticky-bar{
+    position:fixed; left:0; right:0; bottom:0;
+    background:var(--card);
+    border-top:1px solid var(--border);
+    box-shadow:0 -8px 24px -8px rgba(36,42,30,0.15);
+    padding:12px 16px calc(12px + env(safe-area-inset-bottom));
+    z-index:50;
+  }
+  .sticky-inner{
+    max-width:560px;margin:0 auto;
+    display:flex;align-items:center;gap:12px;
+  }
+  .sticky-total{flex:1;min-width:0;}
+  .sticky-total .label{font-size:10px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.05em;font-weight:700;}
+  .sticky-total .value{
+    font-family:'Fraunces',serif;font-weight:700;font-size:17px;color:var(--green-dark);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .btn-wa{
+    display:flex;align-items:center;gap:8px;
+    background:var(--wa);color:#fff;border:none;
+    font-family:'Inter',sans-serif;font-weight:700;font-size:14.5px;
+    padding:13px 20px;border-radius:12px;cursor:pointer;
+    box-shadow:0 4px 14px -4px rgba(37,211,102,0.55);
+    transition:background .15s ease, transform .1s ease;
+    white-space:nowrap;
+  }
+  .btn-wa:hover{background:var(--wa-dark);}
+  .btn-wa:active{transform:scale(0.97);}
+  .btn-wa:disabled{background:#B8B7A9;box-shadow:none;cursor:not-allowed;}
+  .submit-note{font-size:10px;color:var(--ink-soft);text-align:center;margin-top:6px;}
+  .mono{font-family:'Courier New',monospace;}
+
+  /* ---------- Track Order button + tracking mode ---------- */
+  .form-alert-overlay{
+    position:fixed;inset:0;background:rgba(20,26,16,0.6);display:flex;align-items:center;justify-content:center;
+    z-index:999;padding:20px;
+  }
+  .form-alert-box{
+    background:#fff;border-radius:16px;padding:22px 20px;max-width:320px;width:100%;text-align:center;
+    border:2px solid var(--red);box-shadow:0 20px 50px -12px rgba(179,39,30,0.4);
+    animation:formAlertPop .18s cubic-bezier(.2,.8,.3,1);
+  }
+  @keyframes formAlertPop{ from{transform:scale(0.9);opacity:0;} to{transform:scale(1);opacity:1;} }
+  .form-alert-icon{font-size:32px;margin-bottom:10px;}
+  .form-alert-message{font-family:'Inter',sans-serif;font-size:14px;color:var(--ink);line-height:1.5;margin-bottom:18px;white-space:pre-line;}
+  .form-alert-ok-btn{
+    background:var(--red);color:#fff;border:none;border-radius:11px;padding:11px 32px;
+    font-family:'Inter',sans-serif;font-weight:800;font-size:14px;cursor:pointer;width:100%;
+  }
+  .form-alert-ok-btn:active{transform:scale(0.96);}
+
+  .track-order-btn{
+    position:absolute;top:16px;right:16px;z-index:5;
+    background:var(--green-pale);color:var(--green-dark);border:1px solid var(--border);
+    font-family:'Inter',sans-serif;font-weight:700;font-size:11.5px;padding:8px 12px;border-radius:10px;cursor:pointer;
+  }
+  .track-order-btn:active{transform:scale(0.96);}
+  .track-company-header{text-align:center;padding:16px 10px 18px;border-bottom:2px solid var(--gold);margin-bottom:16px;}
+  .track-company-logo{width:48px;height:48px;border-radius:12px;object-fit:contain;background:#fff;border:1px solid var(--border);padding:4px;margin:0 auto 8px;display:block;}
+  .track-company-name{font-family:'Fraunces',serif;font-weight:700;font-size:15px;color:var(--green-dark);}
+  .track-company-meta{font-size:10.5px;color:var(--ink-soft);margin-top:2px;}
+  .track-back-btn{
+    background:none;border:none;color:var(--ink-soft);font-family:'Inter',sans-serif;font-weight:600;font-size:12.5px;
+    cursor:pointer;padding:6px 0;margin-bottom:14px;display:inline-flex;align-items:center;gap:4px;
+  }
+  .track-search-card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:22px 20px;text-align:center;}
+  .track-search-card h2{font-family:'Fraunces',serif;font-weight:700;font-size:17px;margin:0 0 4px;}
+  .track-search-card .sub{font-size:12.5px;color:var(--ink-soft);margin:0 0 16px;}
+  .track-phone-row{display:flex;gap:8px;}
+  .track-phone-row input{flex:1;padding:12px 14px;border:1.5px solid var(--border);border-radius:11px;font-family:'Inter',sans-serif;font-size:14px;}
+  .track-search-btn{background:var(--green);color:#fff;border:none;border-radius:11px;padding:0 18px;font-weight:700;font-size:13px;cursor:pointer;}
+  .track-search-btn:disabled{background:#B8B7A9;}
+
+  .track-state-card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:26px 20px;text-align:center;}
+  .track-state-icon{font-size:34px;margin-bottom:10px;}
+  .track-state-title{font-family:'Fraunces',serif;font-weight:700;font-size:16px;margin-bottom:6px;}
+  .track-state-desc{font-size:12.5px;color:var(--ink-soft);line-height:1.5;}
+  .track-spinner{width:32px;height:32px;border-radius:50%;border:4px solid var(--border);border-top-color:var(--green);margin:0 auto 12px;animation:trackSpin .8s linear infinite;}
+  @keyframes trackSpin{to{transform:rotate(360deg);}}
+
+  .track-order-card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:18px 16px;margin-bottom:12px;}
+  .track-order-num{font-size:10.5px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:2px;}
+  .track-greeting{font-family:'Fraunces',serif;font-weight:700;font-size:16px;margin-bottom:2px;}
+  .track-party-details{background:var(--bg-warm);border:1px solid var(--border);border-radius:11px;padding:10px 12px;margin:10px 0 14px;}
+  .track-detail-row{display:flex;justify-content:space-between;gap:10px;font-size:11.5px;padding:4px 0;}
+  .track-detail-row span:first-child{color:var(--ink-soft);flex:0 0 auto;}
+  .track-detail-row span:last-child{text-align:right;font-weight:600;word-break:break-word;}
+  .track-order-date{font-size:11.5px;color:var(--ink-soft);margin-bottom:12px;}
+  .track-stage-row{display:flex;justify-content:space-between;margin-bottom:14px;position:relative;padding:0 12px;}
+  .track-stage-row::before{content:'';position:absolute;top:11px;left:24px;right:24px;height:2px;background:var(--border);z-index:0;}
+  .track-stage{position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;gap:5px;flex:1;}
+  .track-stage .dot{width:22px;height:22px;border-radius:50%;background:var(--card);border:2px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--ink-soft);}
+  .track-stage.done .dot{background:var(--green);border-color:var(--green);color:#fff;}
+  .track-stage.current .dot{background:var(--gold);border-color:var(--gold);color:#fff;}
+  .track-stage .lbl{font-size:8.5px;color:var(--ink-soft);text-align:center;font-weight:600;}
+  .track-stage.done .lbl, .track-stage.current .lbl{color:var(--ink);}
+  .track-status-banner{border-radius:10px;padding:9px 12px;font-size:12px;font-weight:700;text-align:center;margin-bottom:12px;}
+  .track-status-banner.pending{background:#FDF3DC;color:#7A5A0A;}
+  .track-status-banner.processing{background:#E4EEFB;color:#1E4D8C;}
+  .track-status-banner.ready{background:var(--green-pale);color:var(--green-dark);}
+  .track-status-banner.processed{background:var(--green-pale);color:var(--green-dark);}
+  .track-status-banner.rejected{background:#FBEAE8;color:var(--red);}
+  .track-items-list{border-top:1px solid var(--border);padding-top:10px;}
+  .track-item-row{display:flex;justify-content:space-between;font-size:12.5px;padding:5px 0;}
+  .track-item-row .q{font-weight:700;color:var(--green-dark);white-space:nowrap;margin-left:10px;}
+
+  /* ---------- Order confirmation dialog ---------- */
+  .confirm-overlay{
+    position:fixed;inset:0;background:rgba(20,26,16,0.55);
+    display:flex;align-items:flex-end;justify-content:center;z-index:100;
+  }
+  .confirm-sheet{
+    background:var(--card);width:100%;max-width:560px;max-height:86vh;overflow-y:auto;
+    border-radius:22px 22px 0 0;padding:22px 22px calc(20px + env(safe-area-inset-bottom));
+    animation:confirmUp .22s cubic-bezier(.2,.8,.3,1);
+  }
+  @keyframes confirmUp{from{transform:translateY(24px);opacity:0.6;}to{transform:translateY(0);opacity:1;}}
+  .confirm-sheet h2{
+    font-family:'Fraunces',serif;font-weight:700;font-size:19px;color:var(--green-dark);margin:0 0 4px;
+  }
+  .confirm-sheet .sub{font-size:12.5px;color:var(--ink-soft);margin:0 0 16px;}
+  .confirm-party{
+    background:var(--row-alt);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:14px;font-size:13px;
+  }
+  .confirm-party b{display:block;font-size:14.5px;margin-bottom:2px;}
+  .confirm-items{border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:16px;}
+  .confirm-item-row{
+    display:flex;justify-content:space-between;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border);font-size:13px;
+  }
+  .confirm-item-row:last-child{border-bottom:none;}
+  .confirm-item-row:nth-child(even){background:var(--row-alt);}
+  .confirm-item-name{font-weight:600;}
+  .confirm-item-qty{font-weight:700;color:var(--green-dark);white-space:nowrap;}
+  .confirm-total-row{
+    display:flex;justify-content:space-between;padding:12px 14px;font-family:'Fraunces',serif;font-weight:700;font-size:15px;color:var(--green-dark);
+    border-top:2px solid var(--green-dark);
+  }
+  .confirm-actions{display:flex;gap:10px;}
+  .btn-edit-order{
+    flex:1;background:transparent;color:var(--ink-soft);border:1.5px solid var(--border);
+    font-family:'Inter',sans-serif;font-weight:600;font-size:13.5px;padding:13px 16px;border-radius:12px;cursor:pointer;
+  }
+  .btn-submit-final{
+    flex:2;background:var(--green);color:#fff;border:none;
+    font-family:'Inter',sans-serif;font-weight:700;font-size:14.5px;padding:13px 16px;border-radius:12px;cursor:pointer;
+  }
+  .btn-submit-final:disabled{background:#B8B7A9;cursor:not-allowed;}
+
+  @media (prefers-reduced-motion: reduce){
+    html{scroll-behavior:auto;}
+    .btn-wa{transition:none;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+<div id="buildFooter" class="mono" style="text-align:center;font-size:10px;opacity:0.45;padding:4px 0 20px;"></div>
+
+<script>
+/* =========================================================================
+   Order Ops backend link — same Google Apps Script the main Order Ops app
+   uses. This lets an order placed here land directly in the admin's Orders
+   tab, tagged as "submitted by website", alongside a normal WhatsApp send.
+   ========================================================================= */
+const ORDEROPS_API_URL = "https://script.google.com/macros/s/AKfycbySvac4xY20RsmDywm2gfGKeRxhuzRZPtYsFf8WZWMVWlMpAaMB_oZQ_-u11yoTkaaXDA/exec";
+const ORDEROPS_SECRET = "MyOrderOps2026Secret";
+
+async function orderOpsFetchAll(){
+  const res = await fetch(`${ORDEROPS_API_URL}?secret=${encodeURIComponent(ORDEROPS_SECRET)}&_=${Date.now()}`);
+  const json = await res.json();
+  if(json.error) throw new Error(json.error);
+  return json.data || {};
+}
+async function orderOpsSave(key, value){
+  const res = await fetch(ORDEROPS_API_URL, {
+    method:'POST',
+    headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body: JSON.stringify({ secret:ORDEROPS_SECRET, action:'save', key, value })
+  });
+  const json = await res.json();
+  if(json.error) throw new Error(json.error);
+  return json;
+}
+function uid(){ return (crypto.randomUUID ? crypto.randomUUID() : (Date.now()+'-'+Math.random().toString(36).slice(2))); }
+// Must match the main app's itemKey() convention exactly (name + '__' + size, verbatim).
+function itemKeyFor(name, size){ return name + '__' + size; }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function showAlert(message){
+  const existing = document.getElementById('formAlertOverlay');
+  if(existing) existing.remove();
+  const overlay = document.createElement('div');
+  overlay.className = 'form-alert-overlay';
+  overlay.id = 'formAlertOverlay';
+  overlay.innerHTML = `
+    <div class="form-alert-box">
+      <div class="form-alert-icon">⚠️</div>
+      <div class="form-alert-message">${esc(message)}</div>
+      <button type="button" class="form-alert-ok-btn" id="formAlertOkBtn">OK</button>
+    </div>`;
+  document.body.appendChild(overlay);
+  const close = ()=>{ overlay.remove(); };
+  overlay.addEventListener('click', (e)=>{ if(e.target===overlay) close(); });
+  overlay.querySelector('#formAlertOkBtn').addEventListener('click', close);
+}
+
+// Used only as an offline fallback if the live catalog can't be fetched from
+// Order Ops — the real source of truth is the shared "catalogItems" backend key.
+const DEFAULT_CATALOG = [
+  { cat:"Olife Gold — Pure Olive Oil", items:[
+    {name:"Olife Gold", size:"100mL", mrp:229},
+    {name:"Olife Gold", size:"200mL", mrp:399},
+    {name:"Olife Gold", size:"500mL", mrp:799},
+    {name:"Olife Gold", size:"1L", mrp:1100},
+  ]},
+  { cat:"Olife EV — Extra Virgin Olive Oil", items:[
+    {name:"Olife EV", size:"100mL", mrp:299},
+    {name:"Olife EV", size:"200mL", mrp:499},
+    {name:"Olife EV", size:"500mL", mrp:899},
+    {name:"Olife EV", size:"1L", mrp:1550},
+  ]},
+  { cat:"Castor Oil", items:[
+    {name:"Castor Oil", size:"25 ml", mrp:40},
+    {name:"Castor Oil", size:"50 ml", mrp:75},
+    {name:"Castor Oil", size:"100 ml", mrp:125},
+    {name:"Castor Oil", size:"200mL", mrp:250},
+  ]},
+  { cat:"Roghan Badam — (Almond Oil)", items:[
+    {name:"Roghan Badam", size:"10 ml", mrp:54},
+    {name:"Roghan Badam", size:"25 ml", mrp:120},
+    {name:"Roghan Badam", size:"50 ml", mrp:230},
+    {name:"Roghan Badam", size:"100 ml", mrp:440},
+  ]},
+  { cat:"Chameli Oil — (Jasmin Oil)", items:[
+    {name:"Chameli Oil", size:"25 ml", mrp:35},
+    {name:"Chameli Oil", size:"50 ml", mrp:60},
+    {name:"Chameli Oil", size:"100 ml", mrp:110},
+  ]},
+  { cat:"Neem Oil", items:[
+    {name:"Neem Oil", size:"25 ml", mrp:40},
+    {name:"Neem Oil", size:"50 ml", mrp:75},
+    {name:"Neem Oil", size:"100 ml", mrp:125},
+  ]},
+  { cat:"Kalonji Oil — (Nigella Sativa Seed Oil)", items:[
+    {name:"Kalonji Oil", size:"25 ml", mrp:115},
+    {name:"Kalonji Oil", size:"50 ml", mrp:195},
+    {name:"Kalonji Oil", size:"100 ml", mrp:340},
+    {name:"Kalonji Oil", size:"200mL", mrp:650},
+  ]},
+  { cat:"Oliva — Olive Oil With Outer Box", items:[
+    {name:"Oliva", size:"25 ml", mrp:55},
+    {name:"Oliva", size:"50 ml", mrp:100},
+    {name:"Oliva", size:"100 ml", mrp:180},
+    {name:"Oliva", size:"200 ml", mrp:330},
+    {name:"Oliva", size:"440 ml", mrp:550},
+  ]},
+  { cat:"Til Oil — (Sesame Oil)", items:[
+    {name:"Til Oil", size:"50 ml", mrp:80},
+    {name:"Til Oil", size:"100 ml", mrp:155},
+    {name:"Til Oil", size:"200 ml", mrp:350},
+  ]},
+  { cat:"Tarpin Oil", items:[
+    {name:"Tarpin Oil", size:"25 ml", mrp:35},
+    {name:"Tarpin Oil", size:"50 ml", mrp:65},
+  ]},
+  { cat:"Roghan Amla", items:[
+    {name:"Roghan Amla", size:"100ml", mrp:80},
+  ]},
+  { cat:"Alsi Oil — (Flaxseed Oil)", items:[
+    {name:"Alsi Oil", size:"50 mL", mrp:75},
+    {name:"Alsi Oil", size:"100 mL", mrp:125},
+    {name:"Alsi Oil", size:"200mL", mrp:270},
+  ]},
+  { cat:"Clove Oil — (Long Oil)", items:[
+    {name:"Clove Oil", size:"3 ml", mrp:30},
+  ]},
+  { cat:"Zeytin Green", items:[
+    {name:"Zeytin Green", size:"100mL", mrp:250},
+    {name:"Zeytin Green", size:"200mL", mrp:425},
+    {name:"Zeytin Green", size:"500mL", mrp:799},
+    {name:"Zeytin Green", size:"1L", mrp:1100},
+  ]},
+  { cat:"Zeytin EV", items:[
+    {name:"Zeytin EV", size:"100mL", mrp:299},
+    {name:"Zeytin EV", size:"200mL", mrp:499},
+    {name:"Zeytin EV", size:"1L", mrp:1550},
+  ]},
+  { cat:"Olio Classico Pure", items:[
+    {name:"Olio Classico Pure", size:"100mL", mrp:229},
+    {name:"Olio Classico Pure", size:"200mL", mrp:399},
+  ]},
+  { cat:"Olio Classico EV", items:[
+    {name:"Olio Classico EV", size:"200mL", mrp:499},
+  ]},
+];
+
+// ---------- Case (box) size rules ----------
+const DEFAULT_CASE_SIZE = {
+  '100ml':72,
+  '200ml':48,
+  '440ml':20,
+  '50ml':168,
+  '25ml':216,
+  '3ml':750,
+  '500ml':24,
+  '1l':12,
+};
+const CASE_SIZE_EXCEPTIONS = [
+  { name:'Oliva', size:'200ml', caseSize:25 },
+];
+
+function normalizeSize(size){
+  return size.toLowerCase().replace(/\s+/g,'');
+}
+// Parses "25mL"/"1L"/"3 ml" etc into a comparable mL number, so items sort
+// by actual size (25 < 50 < 100) instead of alphabetically ("100" < "25").
+function sizeToMlForSort(size){
+  const norm = normalizeSize(size);
+  const m = norm.match(/^([\d.]+)(ml|l|kg|g)?$/);
+  if(!m) return 0;
+  const num = parseFloat(m[1]) || 0;
+  const unit = m[2] || 'ml';
+  if(unit==='l') return num*1000;
+  if(unit==='kg') return num*1000;
+  return num;
+}
+
+function getCaseSize(item){
+  const norm = normalizeSize(item.size);
+  const exception = CASE_SIZE_EXCEPTIONS.find(e => e.name===item.name && e.size===norm);
+  if(exception) return exception.caseSize;
+  return DEFAULT_CASE_SIZE[norm] || null;
+}
+
+let idCounter = 0;
+let CATALOG = DEFAULT_CATALOG;
+function preprocessCatalog(){
+  idCounter = 0;
+  CATALOG.sort((a,b)=>a.cat.localeCompare(b.cat));
+  CATALOG.forEach(cat => {
+    cat.items.sort((a,b)=>a.name.localeCompare(b.name) || (sizeToMlForSort(a.size)-sizeToMlForSort(b.size)));
+    cat.items.forEach(it => {
+      it.id = 'i' + (idCounter++);
+      it.caseSize = it.caseSize!=null ? it.caseSize : getCaseSize(it);
+      it.key = itemKeyFor(it.name, it.size);
+    });
+  });
+}
+preprocessCatalog();
+// Converts the flat backend item list (same shape Order Ops uses) into the
+// { cat, items:[...] } grouped structure this form renders, preserving the
+// order categories first appear in.
+function groupFlatCatalogItems(flatItems){
+  const order = [];
+  const byCat = {};
+  flatItems.forEach(it=>{
+    if(!byCat[it.cat]){ byCat[it.cat] = []; order.push(it.cat); }
+    byCat[it.cat].push({ name: it.name, size: it.size, mrp: it.mrp, caseSize: it.caseSize || null });
+  });
+  return order.map(cat=>({ cat, items: byCat[cat] }));
+}
+// Pulls the live, shared catalog from Order Ops (same data admin manages in
+// Stock ▸ + Add item) so this form always matches what's actually stocked.
+// Falls back to the last-known/default catalog if offline.
+async function loadLiveCatalog(){
+  try{
+    const data = await orderOpsFetchAll();
+    if(data.catalogItems && data.catalogItems.length){
+      CATALOG = groupFlatCatalogItems(data.catalogItems);
+      preprocessCatalog();
+    }
+    knownCustomers = data.customers || [];
+  }catch(e){
+    console.error('Could not load live catalog, using built-in fallback', e);
+  }
+}
+function isUserTyping(){
+  const el = document.activeElement;
+  return !!(el && (el.tagName==='INPUT' || el.tagName==='TEXTAREA'));
+}
+// Background refresh (every 5s) — same as loadLiveCatalog but preserves
+// whatever quantities the person has already typed in, keyed by item, so a
+// live catalog update never wipes out an order in progress.
+async function refreshLiveCatalogSilent(){
+  try{
+    const data = await orderOpsFetchAll();
+    if(data.catalogItems && data.catalogItems.length){
+      const preserved = {};
+      CATALOG.forEach(cat => cat.items.forEach(it => {
+        if(it.qty || it.cases) preserved[it.key] = { qty: it.qty, cases: it.cases };
+      }));
+      CATALOG = groupFlatCatalogItems(data.catalogItems);
+      preprocessCatalog();
+      CATALOG.forEach(cat => cat.items.forEach(it => {
+        const p = preserved[it.key];
+        if(p){ it.qty = p.qty; it.cases = p.cases; }
+      }));
+    }
+    knownCustomers = data.customers || [];
+    if(!isUserTyping()) render();
+  }catch(e){
+    console.error('Live refresh hiccup (will retry in 5s)', e);
+  }
+}
+
+let knownCustomers = [];
+let phoneMasked = false;
+let partyLocked = false;
+let custName = '';
+let custPhone = '';
+let custCity = '';
+let custAddress = '';
+let custGstin = '';
+let custDate = new Date().toISOString().slice(0,10);
+let formErrors = { custName:false, custPhone:false, custCity:false, custAddress:false };
+let expandedCats = new Set();
+let submitting = false;
+let searchQuery = '';
+
+/* ---------- Order tracking (built into this page — no separate file) ---------- */
+const TRACK_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000; // link stays valid 7 days after "Processed"
+const TRACK_STAGE_ORDER = ['pending','processing','ready','processed'];
+const TRACK_STAGE_LABEL = { pending:'Received', processing:'Preparing', ready:'Ready', processed:'Dispatched' };
+const TRACK_STATUS_TEXT = {
+  pending:'⏳ Your order has been received and is waiting to be confirmed.',
+  processing:'🔧 Your order is being prepared.',
+  ready:'📦 Your order is packed and ready to dispatch.',
+  processed:'✅ Your order has been dispatched. Thank you!',
+  rejected:'✖ This order was not accepted. Please contact us for details.',
+};
+let pageMode = 'order'; // 'order' | 'track'
+let trackDirectId = null, trackDirectDay = null;
+let trackDirectState = 'idle'; // idle -> loading -> found|not_found|expired|error
+let trackDirectOrder = null;
+let trackReadyStock = {};
+let trackPhone = '';
+let trackSearching = false;
+let trackResults = null; // null = not searched, [] = no matches, array = matches
+
+(function initTrackModeFromUrl(){
+  const params = new URLSearchParams(location.search);
+  const id = params.get('id'), d = params.get('d');
+  if(id && d){ pageMode = 'track'; trackDirectId = id; trackDirectDay = d; }
+})();
+
+function openTrackMode(){ pageMode = 'track'; trackDirectId = null; trackDirectDay = null; trackResults = null; trackPhone = ''; render(); }
+function closeTrackMode(){
+  pageMode = 'order';
+  // Drop any ?id=&d= from the URL so a refresh doesn't re-trigger direct tracking.
+  // Wrapped in try/catch: this can throw on file:// pages (no real origin) —
+  // that must never block the render() below.
+  try{
+    if(window.history && window.history.replaceState) window.history.replaceState({}, '', location.pathname);
+  }catch(e){ /* ignore — harmless to skip the URL cleanup */ }
+  render();
+}
+
+async function loadDirectTrackOrder(silent){
+  if(!silent){ trackDirectState = 'loading'; render(); }
+  try{
+    const data = await orderOpsFetchAll();
+    const dayOrders = data['orders_' + trackDirectDay] || [];
+    const order = dayOrders.find(o => o.id === trackDirectId);
+    if(!order){ trackDirectState = 'not_found'; render(); return; }
+    if(order.status === 'processed' && order.processedAt && (Date.now() - order.processedAt) > TRACK_EXPIRY_MS){
+      trackDirectState = 'expired'; render(); return;
+    }
+    // Party details are shown LIVE from the customer record (not the frozen
+    // snapshot on the order) — if the office fixes a wrong city/phone/etc.
+    // afterwards, this page reflects it immediately without a new link.
+    const liveCust = order.customerId ? (data.customers||[]).find(c=>c.id===order.customerId) : null;
+    trackDirectOrder = liveCust ? {
+      ...order,
+      customerCity: liveCust.city || order.customerCity,
+      customerPhone: liveCust.phone || order.customerPhone,
+      customerAddress: liveCust.address || order.customerAddress,
+      customerGstin: liveCust.gstin || order.customerGstin,
+    } : order;
+    trackReadyStock = data.readyStock || {}; // used to derive each item's live Ready/Under Packing status
+    trackDirectState = 'found';
+  }catch(e){
+    console.error(e);
+    if(!silent) trackDirectState = 'error'; // a background refresh hiccup shouldn't blow away a working view
+  }
+  render();
+}
+
+async function searchOrdersByPhone(silent){
+  const phone = trackPhone.trim();
+  if(!/^\d{10}$/.test(phone)){ if(!silent) showAlert('Enter a valid 10-digit WhatsApp number.'); return; }
+  if(!silent){ trackSearching = true; render(); }
+  try{
+    const data = await orderOpsFetchAll();
+    const customers = data.customers || [];
+    const matchIds = new Set(customers.filter(c => (c.phone||'').trim() === phone).map(c=>c.id));
+    const results = [];
+    Object.keys(data).forEach(k=>{
+      if(k.indexOf('orders_')===0 && Array.isArray(data[k])){
+        const dayKey = k.substring('orders_'.length);
+        data[k].forEach(o=>{ if(matchIds.has(o.customerId)) results.push({...o, _dayKey: dayKey}); });
+      }
+    });
+    results.sort((a,b)=>b.createdAt-a.createdAt);
+    trackResults = results;
+  }catch(e){
+    console.error(e);
+    if(!silent) trackResults = 'error';
+  }
+  trackSearching = false; render();
+}
+
+function trackStageHtml(order){
+  const status = order.status || 'pending';
+  const isRejected = status === 'rejected';
+  const stageIdx = TRACK_STAGE_ORDER.indexOf(status);
+  if(isRejected) return '';
+  const stages = TRACK_STAGE_ORDER.map((s,i)=>{
+    const cls = i < stageIdx ? 'done' : i === stageIdx ? 'current' : '';
+    const icon = (cls === 'done' || cls === 'current') ? '✓' : (i+1);
+    return `<div class="track-stage ${cls}"><div class="dot">${icon}</div><div class="lbl">${TRACK_STAGE_LABEL[s]}</div></div>`;
+  }).join('');
+  return `<div class="track-stage-row">${stages}</div>`;
+}
+function trackFindCaseSize(key){
+  for(const cat of CATALOG){
+    for(const it of cat.items){
+      if(it.key === key) return it.caseSize || null;
+    }
+  }
+  return null;
+}
+// Prefers "X cases" when the qty divides evenly by the item's case size,
+// with the exact piece count always shown small alongside for clarity.
+function trackFmtQtyPreferCase(qty, caseSize){
+  if(caseSize && qty!==0 && qty % caseSize === 0){
+    const cases = qty / caseSize;
+    return `${cases} case${Math.abs(cases)===1?'':'s'}`;
+  }
+  return `${qty} pc`;
+}
+function trackOrderCardHtml(order){
+  const status = order.status || 'pending';
+  const showItemStatus = status !== 'pending' && status !== 'rejected'; // per-item detail only makes sense once accepted
+  const activeItems = (order.items||[]).filter(it=>!it.cancelled);
+  const cancelledItems = (order.items||[]).filter(it=>it.cancelled);
+  const itemRow = (it)=>{
+    const caseSize = trackFindCaseSize(it.key);
+    const preferred = trackFmtQtyPreferCase(it.qty, caseSize);
+    const qtyPart = `<span class="q">${preferred} <span style="font-weight:400;color:var(--ink-soft);font-size:10.5px;">(${it.qty} pc)</span></span>`;
+    let statusTag = '';
+    if(showItemStatus){
+      // Once the order itself has reached Ready (or beyond), every
+      // remaining item is definitionally Ready. While still Processing,
+      // derive it live from current stock — the same automatic check that
+      // drives the order's own Processing -> Ready transition.
+      const isReady = (status==='ready' || status==='processed') || (trackReadyStock[it.key]||0) >= 0;
+      statusTag = isReady
+        ? `<span style="color:var(--green);font-weight:700;font-size:10.5px;"> ✅ Ready</span>`
+        : `<span style="color:var(--gold);font-weight:700;font-size:10.5px;"> 🔧 Under Packing</span>`;
+    }
+    return `<div class="track-item-row"><span>${esc(it.name)} <span style="color:var(--ink-soft);">${esc(it.size)}</span>${statusTag}</span>${qtyPart}</div>`;
+  };
+  const itemsHtml = activeItems.map(itemRow).join('');
+  const cancelledHtml = cancelledItems.length ? `
+    <div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);">
+      <div style="font-size:10px;color:var(--red);text-transform:uppercase;letter-spacing:0.03em;font-weight:700;margin-bottom:4px;">Cancelled items</div>
+      ${cancelledItems.map(it=>`<div class="track-item-row" style="opacity:0.6;text-decoration:line-through;"><span>${esc(it.name)} <span style="color:var(--ink-soft);">${esc(it.size)}</span></span><span class="q">${it.qty} pc</span></div>`).join('')}
+    </div>` : '';
+  const dateStr = new Date(order.createdAt).toLocaleDateString(undefined,{day:'2-digit',month:'short',year:'numeric'});
+  const dispatchHtml = (status==='processed' && order.transportName) ? `
+    <div style="background:var(--green-pale);border-radius:11px;padding:12px 14px;margin-bottom:12px;">
+      <div style="font-weight:700;font-size:13.5px;color:var(--green-dark);">🚚 ${esc(order.transportName)}</div>
+      ${order.dispatchedAt ? `<div style="font-size:11px;color:var(--ink-soft);margin-top:2px;">Booked ${new Date(order.dispatchedAt).toLocaleDateString(undefined,{day:'2-digit',month:'short',year:'numeric'})}</div>` : ''}
+      ${order.totalCases ? `<div style="font-size:11.5px;margin-top:4px;">Total no of Cases Booked - <b>${order.totalCases}</b></div>` : ''}
+    </div>` : '';
+  return `
+    <div class="track-order-card">
+      <div class="track-greeting">Hello, ${esc(order.customerName||'there')}! 👋</div>
+      <div class="track-order-num">${order.orderNumber ? 'Order #' + esc(order.orderNumber) : ''}</div>
+      <div class="track-party-details">
+        <div class="track-detail-row"><span>Date</span><span>${dateStr}</span></div>
+        <div class="track-detail-row"><span>Party Name</span><span>${esc(order.customerName)||'—'}</span></div>
+        <div class="track-detail-row"><span>Phone</span><span>${order.customerPhone?esc(order.customerPhone):'—'}</span></div>
+        ${order.customerGstin ? `<div class="track-detail-row"><span>GSTIN</span><span>${esc(order.customerGstin)}</span></div>` : ''}
+        <div class="track-detail-row"><span>City</span><span>${order.customerCity?esc(order.customerCity):'—'}</span></div>
+        ${order.customerAddress ? `<div class="track-detail-row"><span>Address</span><span>${esc(order.customerAddress)}</span></div>` : ''}
+      </div>
+      ${trackStageHtml(order)}
+      <div class="track-status-banner ${status}">${TRACK_STATUS_TEXT[status]||''}</div>
+      ${dispatchHtml}
+      <div class="track-items-list">${itemsHtml}${cancelledHtml}</div>
+    </div>`;
+}
+// Phone-search results only ever show party name + status — full item-level
+// detail (and the exact tracking link) is reserved for someone who actually
+// has the direct link to that specific order.
+function trackOrderSummaryHtml(order){
+  const status = order.status || 'pending';
+  return `
+    <div class="track-order-card" style="padding:14px 16px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+        <div style="font-weight:700;font-size:14px;">${order.customerName||'—'}</div>
+        <span class="track-status-banner ${status}" style="margin:0;padding:5px 10px;font-size:11px;white-space:nowrap;">${TRACK_STAGE_LABEL[status] || (status==='rejected'?'Rejected':status)}</span>
+      </div>
+      <div class="track-order-date" style="margin:4px 0 0;">${order.orderNumber ? '#'+order.orderNumber+' · ' : ''}${new Date(order.createdAt).toLocaleDateString(undefined,{day:'2-digit',month:'short',year:'numeric'})}</div>
+    </div>`;
+}
+
+function trackCompanyHeaderHtml(){
+  return `
+    <div class="track-company-header">
+      <img src="${COMPANY_LOGO}" alt="${COMPANY_NAME}" class="track-company-logo" />
+      <div class="track-company-name">${esc(COMPANY_NAME)}</div>
+      <div class="track-company-meta">${esc(COMPANY_ADDRESS)}</div>
+      <div class="track-company-meta">GSTIN: ${esc(COMPANY_GSTIN)}</div>
+    </div>`;
+}
+function renderTrackMode(){
+  const app = document.getElementById('app');
+  if(trackDirectId){
+    if(trackDirectState === 'idle') loadDirectTrackOrder();
+    let body;
+    if(trackDirectState === 'loading'){
+      body = `<div class="track-state-card"><div class="track-spinner"></div><div class="track-state-title">Looking up your order…</div></div>`;
+    } else if(trackDirectState === 'found'){
+      body = trackOrderCardHtml(trackDirectOrder);
+    } else if(trackDirectState === 'not_found'){
+      body = `<div class="track-state-card"><div class="track-state-icon">🔍</div><div class="track-state-title">Order not found</div><div class="track-state-desc">We couldn't find an order matching this link.</div></div>`;
+    } else if(trackDirectState === 'expired'){
+      body = `<div class="track-state-card"><div class="track-state-icon">⌛</div><div class="track-state-title">This tracking link has expired</div><div class="track-state-desc">Tracking links stay active for 7 days after dispatch. Please contact M A Products INDIA directly if you need help.</div></div>`;
+    } else {
+      body = `<div class="track-state-card"><div class="track-state-icon">⚠️</div><div class="track-state-title">Something went wrong</div><div class="track-state-desc">Could not load your order right now. Please try again.</div></div>`;
+    }
+    app.innerHTML = `${trackCompanyHeaderHtml()}<button type="button" class="track-back-btn" onclick="closeTrackMode()">‹ Back to order form</button>${body}`;
+    return;
+  }
+  let resultsHtml = '';
+  if(trackSearching){
+    resultsHtml = `<div class="track-state-card" style="margin-top:14px;"><div class="track-spinner"></div><div class="track-state-title">Searching…</div></div>`;
+  } else if(trackResults === 'error'){
+    resultsHtml = `<div class="track-state-card" style="margin-top:14px;"><div class="track-state-icon">⚠️</div><div class="track-state-title">Something went wrong</div><div class="track-state-desc">Please try again in a moment.</div></div>`;
+  } else if(Array.isArray(trackResults)){
+    resultsHtml = trackResults.length === 0
+      ? `<div class="track-state-card" style="margin-top:14px;"><div class="track-state-icon">🔍</div><div class="track-state-title">No orders found</div><div class="track-state-desc">No orders match that WhatsApp number.</div></div>`
+      : `<div style="margin-top:14px;">${trackResults.map(trackOrderSummaryHtml).join('')}</div>`;
+  }
+  app.innerHTML = `
+    ${trackCompanyHeaderHtml()}
+    <button type="button" class="track-back-btn" onclick="closeTrackMode()">‹ Back to order form</button>
+    <div class="track-search-card">
+      <h2>Track your order</h2>
+      <div class="sub">Enter the WhatsApp number you used to place the order.</div>
+      <div class="track-phone-row">
+        <input type="tel" inputmode="numeric" maxlength="10" placeholder="10-digit WhatsApp number" value="${trackPhone}" oninput="trackPhone=this.value" onkeydown="if(event.key==='Enter') searchOrdersByPhone()">
+        <button type="button" class="track-search-btn" ${trackSearching?'disabled':''} onclick="searchOrdersByPhone()">Search</button>
+      </div>
+    </div>
+    ${resultsHtml}
+  `;
+}
+
+function toggleCat(idx){
+  if(expandedCats.has(idx)) expandedCats.delete(idx);
+  else expandedCats.add(idx);
+  render();
+}
+
+function itemMatchesSearch(it){
+  if(!searchQuery) return true;
+  const q = searchQuery.trim().toLowerCase();
+  return (it.name + ' ' + it.size).toLowerCase().includes(q);
+}
+function catMatchingItems(cat){
+  return cat.items.filter(itemMatchesSearch);
+}
+function updateSearch(el){
+  searchQuery = el.value;
+  render();
+  const input = document.getElementById('itemSearch');
+  if(input){ input.focus(); const v=input.value; input.value=''; input.value=v; }
+}
+
+function catStats(cat){
+  let lineCount = 0, pieces = 0;
+  cat.items.forEach(it => { const t = totalPcs(it); if(t>0){ lineCount++; pieces += t; } });
+  return { lineCount, pieces };
+}
+
+function totalPcs(it){
+  const qty = Number(it.qty)||0;
+  const cases = Number(it.cases)||0;
+  return qty + (cases * (it.caseSize||0));
+}
+
+function getOrderStats(){
+  let lineCount = 0;
+  let totalPieces = 0;
+  CATALOG.forEach(cat => cat.items.forEach(it => {
+    const t = totalPcs(it);
+    if(t>0){ lineCount++; totalPieces += t; }
+  }));
+  return { lineCount, totalPieces };
+}
+
+const FORM_BUILD = "2026-08-13-favicon-sizesort-version1";
+const dropIcon = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C12 2 5 11.5 5 15.5C5 19.09 8.13 22 12 22C15.87 22 19 19.09 19 15.5C19 11.5 12 2 12 2Z" fill="white"/></svg>`;
+const COMPANY_LOGO = "https://static.wixstatic.com/media/f34ac6_16010ac0fe9c48739c4860abefec3cbb~mv2.png/v1/fill/w_410,h_409,al_c,lg_1,q_85,enc_avif,quality_auto/M%20A%20Products%20INDIA%20Logo.png";
+const COMPANY_NAME = "M A Products INDIA";
+const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
+const COMPANY_GSTIN = "07EHRPK1709L2ZU";
+const waIcon = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91C2.13 13.66 2.59 15.36 3.45 16.86L2.05 22L7.3 20.62C8.75 21.41 10.38 21.83 12.04 21.83C17.5 21.83 21.95 17.38 21.95 11.92C21.95 9.27 20.92 6.78 19.05 4.91C17.18 3.03 14.69 2 12.04 2ZM12.04 20.15C10.56 20.15 9.11 19.75 7.85 19L7.55 18.82L4.43 19.64L5.27 16.6L5.07 16.29C4.24 15 3.8 13.47 3.8 11.91C3.8 7.37 7.5 3.67 12.05 3.67C14.25 3.67 16.32 4.53 17.87 6.09C19.42 7.65 20.28 9.71 20.28 11.92C20.27 16.46 16.57 20.15 12.04 20.15ZM16.56 13.99C16.32 13.87 15.14 13.29 14.92 13.21C14.7 13.13 14.54 13.09 14.38 13.33C14.22 13.57 13.76 14.11 13.62 14.27C13.48 14.43 13.34 14.45 13.1 14.33C12.86 14.21 12.08 13.95 11.16 13.13C10.44 12.49 9.96 11.7 9.82 11.46C9.68 11.22 9.8 11.09 9.92 10.97C10.03 10.86 10.16 10.68 10.28 10.54C10.4 10.4 10.44 10.3 10.52 10.14C10.6 9.98 10.56 9.84 10.5 9.72C10.44 9.6 9.96 8.42 9.76 7.94C9.56 7.47 9.36 7.53 9.21 7.53C9.07 7.52 8.91 7.52 8.75 7.52C8.59 7.52 8.33 7.58 8.11 7.82C7.89 8.06 7.27 8.64 7.27 9.82C7.27 11 8.13 12.14 8.25 12.3C8.37 12.46 9.95 14.91 12.38 15.95C12.96 16.2 13.41 16.35 13.76 16.46C14.34 16.65 14.87 16.62 15.29 16.56C15.76 16.49 16.72 15.98 16.92 15.42C17.12 14.86 17.12 14.38 17.06 14.28C17 14.18 16.8 14.11 16.56 13.99Z" fill="white"/></svg>`;
+
+function render(){
+  const app = document.getElementById('app');
+  if(pageMode === 'track'){ renderTrackMode(); return; }
+  const { lineCount, totalPieces } = getOrderStats();
+  const anyQty = lineCount > 0;
+
+  app.innerHTML = `
+    <header>
+      <div class="brand">
+        <img src="${COMPANY_LOGO}" alt="${COMPANY_NAME}" class="brand-logo-img" />
+        <h1>M.A. Products <span style="color:var(--gold)">(India)</span></h1>
+        <div class="tag">ORDER FORM</div>
+        <div class="addr">
+          +91-9312725028, +91-9266725028 &nbsp;|&nbsp; maproductsindia@gmail.com<br>
+          ${esc(COMPANY_ADDRESS)}<br>
+          GSTIN: ${esc(COMPANY_GSTIN)}
+        </div>
+      </div>
+      <button type="button" class="track-order-btn" onclick="openTrackMode()">🔍 Track Order</button>
+      <div class="meta-fields">
+        <div class="field">
+          <label>Date</label>
+          <input id="custDate" type="date" value="${custDate}" oninput="updateMeta(this)">
+        </div>
+        <div class="field">
+          <label>Customer / Party <span class="required-mark">*</span></label>
+          <input id="custName" list="custNameList" class="${formErrors.custName?'input-error':''}" value="${custName}" placeholder="Customer name" oninput="updateMeta(this)" autocomplete="off">
+          <datalist id="custNameList">${knownCustomers.map(c=>`<option value="${esc(c.name)}${c.city?` (${esc(c.city)})`:''}"></option>`).join('')}</datalist>
+          ${formErrors.custName ? '<div class="field-error">Party name is required</div>' : ''}
+        </div>
+        <div class="field">
+          <label>WhatsApp Number <span class="required-mark">*</span></label>
+          <input id="custPhone" type="tel" inputmode="numeric" maxlength="10" ${partyLocked?'readonly style="background:var(--bg-warm);color:var(--ink-soft);"':''} class="${formErrors.custPhone?'input-error':''}" value="${phoneMasked?maskPhone(custPhone):custPhone}" placeholder="10-digit WhatsApp number" oninput="updateMeta(this)">
+          ${partyLocked ? `<div class="mono" style="margin-top:4px;font-size:10px;">🔒 Existing customer — number on file. Change the party name above to edit.</div>` : ''}
+          ${formErrors.custPhone ? `<div class="field-error">${custPhone.trim() ? 'Enter a valid 10-digit number' : 'WhatsApp number is required'}</div>` : ''}
+        </div>
+        <div class="field">
+          <label>City <span class="required-mark">*</span></label>
+          <input id="custCity" ${partyLocked?'readonly style="background:var(--bg-warm);color:var(--ink-soft);"':''} class="${formErrors.custCity?'input-error':''}" value="${custCity}" placeholder="e.g. Jaipur" oninput="updateMeta(this)">
+          ${formErrors.custCity ? '<div class="field-error">City is required</div>' : ''}
+        </div>
+        <div class="field">
+          <label>Customer Address (optional)</label>
+          <input id="custAddress" ${partyLocked?'readonly style="background:var(--bg-warm);color:var(--ink-soft);"':''} value="${custAddress}" placeholder="Customer Address" oninput="updateMeta(this)">
+        </div>
+        <div class="field">
+          <label>GSTIN (optional)</label>
+          <input id="custGstin" ${partyLocked?'readonly style="background:var(--bg-warm);color:var(--ink-soft);text-transform:uppercase;"':'style="text-transform:uppercase;"'} value="${custGstin}" placeholder="22AAAAA0000A1Z5" oninput="updateMeta(this)">
+        </div>
+      </div>
+    </header>
+
+    <div class="search-box">
+      <input id="itemSearch" type="text" placeholder="🔎 Search an item (e.g. Castor 100ml)…" value="${searchQuery}" oninput="updateSearch(this)">
+      ${searchQuery ? `<button type="button" class="search-clear" onclick="searchQuery='';render();">✕</button>` : ''}
+    </div>
+
+    ${CATALOG.map((cat, idx) => {
+      const matches = catMatchingItems(cat);
+      if(searchQuery && matches.length===0) return '';
+      const isOpen = searchQuery ? true : expandedCats.has(idx);
+      const { lineCount, pieces } = catStats(cat);
+      return `
+      <div class="category">
+        <button type="button" class="category-title ${isOpen?'open':''}" onclick="toggleCat(${idx})">
+          <span class="cat-title-left">${dropIcon}${cat.cat}</span>
+          <span class="cat-title-right">
+            ${lineCount>0 ? `<span class="cat-badge">${pieces} pcs</span>` : ''}
+            <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6 9L12 15L18 9" stroke="white" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </span>
+        </button>
+        ${isOpen ? `
+        <table>
+          <thead>
+            <tr>
+              <th>Size</th>
+              <th class="num">MRP</th>
+              <th class="num">Pcs</th>
+              <th class="num">Case</th>
+              <th class="num">Total Pcs</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${matches.map(it => {
+              const t = totalPcs(it);
+              const hasCase = !!it.caseSize;
+              return `<tr class="${t>0?'has-qty':''}">
+                <td>${it.size}</td>
+                <td class="num">₹${it.mrp}</td>
+                <td class="num"><input class="qty-input" type="number" min="0" value="${it.qty||''}" placeholder="0" oninput="updateField('${it.id}','qty',this.value)"></td>
+                <td class="num">
+                  ${hasCase
+                    ? `<input class="qty-input" type="number" min="0" value="${it.cases||''}" placeholder="0" oninput="updateField('${it.id}','cases',this.value)"><span class="case-size-hint">×${it.caseSize}/case</span>`
+                    : `<span class="dash">—</span>`
+                  }
+                </td>
+                <td class="num total-pcs">${t>0?t:'—'}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+        ` : ''}
+      </div>
+    `;}).join('')}
+
+    <div class="summary">
+      <div class="summary-inner">
+        <div class="sum-row"><span>Items ordered</span><span>${lineCount}</span></div>
+        <div class="sum-row total"><span>Total Pieces</span><span>${totalPieces}</span></div>
+      </div>
+      <div class="actions-row">
+        <button class="btn-reset" onclick="resetAll()">Reset order</button>
+      </div>
+    </div>
+
+    <div class="sticky-bar">
+      <div class="sticky-inner">
+        <div class="sticky-total">
+          <div class="label">Total Pieces</div>
+          <div class="value">${totalPieces} pcs &nbsp;·&nbsp; ${lineCount} items</div>
+        </div>
+        <button class="btn-wa" ${anyQty && !submitting?'':'disabled'} onclick="openOrderConfirm()">${submitting?'Submitting…':'Submit Order'}</button>
+      </div>
+      <div class="submit-note">You'll review your order before it's sent.</div>
+    </div>
+  `;
+}
+
+function updateField(id, field, val){
+  CATALOG.forEach(cat => cat.items.forEach(it => { if(it.id===id) it[field] = val; }));
+  render();
+  const input = document.querySelector(`input[oninput*="'${id}','${field}'"]`);
+  if(input){ input.focus(); const v=input.value; input.value=''; input.value=v; }
+}
+
+function maskPhone(p){
+  p = String(p||'').trim();
+  return p.length>=4 ? '••••••'+p.slice(-4) : p;
+}
+function updateMeta(el){
+  if(el.id==='custName'){
+    // The dropdown shows "Name (City)" as a hint — strip that back off
+    // before matching or storing, so the field itself stays a clean name.
+    const typedClean = el.value.replace(/\s*\([^)]*\)\s*$/, '').trim();
+    const match = knownCustomers.find(c => (c.name||'').trim().toLowerCase() === typedClean.toLowerCase());
+    if(match){
+      custName = match.name; // normalized, no "(City)" suffix left in the field
+      custCity = match.city || custCity;
+      custAddress = match.address || custAddress;
+      custGstin = match.gstin || custGstin;
+      if(match.phone){ custPhone = match.phone; phoneMasked = true; }
+      partyLocked = true; // existing party — details come from the office record, not editable here
+      render();
+      const input = document.getElementById('custName');
+      if(input){ input.focus(); const v = input.value; input.value=''; input.value=v; input.setSelectionRange(v.length, v.length); }
+      return;
+    }
+    custName = el.value;
+    phoneMasked = false;
+    const wasLocked = partyLocked;
+    partyLocked = false; // no longer matches a known party — free to enter fresh details
+    if(wasLocked){
+      // Just unlocked — the other fields' readonly state needs a re-render
+      // to actually clear (their DOM attributes were baked in at last render).
+      render();
+      const input = document.getElementById('custName');
+      if(input){ input.focus(); const v = input.value; input.value=''; input.value=v; input.setSelectionRange(v.length, v.length); }
+      return;
+    }
+  }
+  if(partyLocked) return; // locked fields ignore direct edits — change the party name to unlock
+  if(el.id==='custPhone'){ phoneMasked = false; custPhone = el.value; }
+  if(el.id==='custCity') custCity = el.value;
+  if(el.id==='custAddress') custAddress = el.value;
+  if(el.id==='custGstin') custGstin = el.value;
+  if(el.id==='custDate') custDate = el.value;
+  if(formErrors[el.id] && el.value.trim()){
+    formErrors[el.id] = false;
+    el.classList.remove('input-error');
+    const err = el.parentElement.querySelector('.field-error');
+    if(err) err.remove();
+  }
+}
+
+function resetAll(){
+  CATALOG.forEach(cat => cat.items.forEach(it => { it.qty=''; it.cases=''; }));
+  custName = ''; custPhone = ''; custCity = ''; custAddress = ''; custGstin = '';
+  custDate = new Date().toISOString().slice(0,10);
+  phoneMasked = false;
+  partyLocked = false;
+  formErrors = { custName:false, custPhone:false, custCity:false };
+  searchQuery = '';
+  render();
+}
+
+// Submits this order straight into Order Ops (same backend the main app
+// uses) — creates/matches the customer, deducts ready stock, and adds a
+// pending order tagged "Website" so the admin sees it needs accepting.
+async function submitToOrderOps(preGeneratedId){
+  try{
+    const data = await orderOpsFetchAll();
+    const customers = data.customers || [];
+
+    let cust = customers.find(c => (c.name||'').trim().toLowerCase() === custName.trim().toLowerCase());
+    if(!cust){
+      cust = { id: uid(), name: custName.trim(), phone: custPhone.trim(), city: custCity.trim(), address: custAddress.trim(), gstin: custGstin.trim().toUpperCase(), addedBy:'Website', addedByUsername:'website', addedAt: Date.now() };
+      customers.push(cust);
+    } else {
+      if(!cust.phone && custPhone.trim()) cust.phone = custPhone.trim();
+      if(!cust.city && custCity.trim()) cust.city = custCity.trim();
+    }
+
+    const items = [];
+    CATALOG.forEach(cat => {
+      cat.items.filter(it => totalPcs(it) > 0).forEach(it => {
+        const t = totalPcs(it);
+        items.push({ key: it.key, name: it.name, size: it.size, qty: t });
+      });
+    });
+    if(items.length===0) return;
+
+    // Stock is only reserved once the owner accepts the order in Order Ops —
+    // this just submits the request, same as an order placed inside the app.
+    const nowTs = Date.now();
+    const dOrderNum = new Date(nowTs);
+    const order = {
+      id: preGeneratedId || uid(),
+      orderNumber: `${String(dOrderNum.getMonth()+1).padStart(2,'0')}${String(dOrderNum.getDate()).padStart(2,'0')}${dOrderNum.getFullYear()}-WEB`,
+      customerId: cust.id, customerName: cust.name, customerCity: cust.city || '',
+      customerPhone: cust.phone || '', customerAddress: cust.address || '', customerGstin: cust.gstin || '',
+      items, status:'pending', fillingStatus:'pending', packagingStatus:'pending', stockDeducted:false, processedAt:null,
+      createdBy:'Website form', createdByUsername:'website', createdByRole:'website',
+      source:'website', createdAt: nowTs
+    };
+
+    // Orders are stored one row PER CALENDAR DAY in Order Ops (e.g.
+    // "orders_2026-08-10") so no single cell grows without bound — this
+    // has to write into today's day-chunk alongside whatever else is
+    // already in it, not overwrite the whole orders history.
+    const d = new Date(order.createdAt);
+    const dayKey = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+    const todaysOrders = data['orders_'+dayKey] || [];
+    todaysOrders.push(order);
+
+    await Promise.all([
+      orderOpsSave('customers', customers),
+      orderOpsSave('orders_'+dayKey, todaysOrders)
+    ]);
+    return { id: order.id, dayKey };
+  }catch(e){
+    console.error('Order Ops submission failed', e);
+    // Non-fatal: the WhatsApp message still goes out even if this fails.
+    return null;
+  }
+}
+
+// Step 1: validate, then show the "review before sending" dialog.
+function openOrderConfirm(){
+  formErrors.custName = !custName.trim();
+  formErrors.custPhone = !/^\d{10}$/.test(custPhone.trim());
+  formErrors.custCity = !custCity.trim();
+
+  if(formErrors.custName || formErrors.custPhone || formErrors.custCity){
+    render();
+    const headerEl = document.querySelector('header');
+    if(headerEl && headerEl.scrollIntoView) headerEl.scrollIntoView({ behavior:'smooth', block:'start' });
+    const firstInvalid = document.querySelector('.input-error');
+    if(firstInvalid) firstInvalid.focus();
+    return;
+  }
+
+  const { lineCount, totalPieces } = getOrderStats();
+  const rows = [];
+  CATALOG.forEach(cat => {
+    cat.items.filter(it => totalPcs(it) > 0).forEach(it => {
+      const qty = Number(it.qty)||0;
+      const cases = Number(it.cases)||0;
+      const t = totalPcs(it);
+      let breakdown = '';
+      if(cases>0) breakdown = ` (${cases} case${cases>1?'s':''} × ${it.caseSize}${qty>0?` + ${qty} pcs`:''})`;
+      rows.push(`<div class="confirm-item-row"><span class="confirm-item-name">${it.name} <span style="color:var(--ink-soft);font-weight:400;">${it.size}</span></span><span class="confirm-item-qty">${t} pcs${breakdown}</span></div>`);
+    });
+  });
+
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  overlay.id = 'orderConfirmOverlay';
+  overlay.innerHTML = `
+    <div class="confirm-sheet">
+      <h2>Review your order</h2>
+      <p class="sub">Check everything below, then submit to the company.</p>
+      <div class="confirm-party">
+        <b>${custName}</b>
+        Ph. ${custPhone} &nbsp;·&nbsp; ${custDate}<br>${custCity}${custCity && custAddress ? ', ' : ''}${custAddress}
+      </div>
+      <div class="confirm-items">${rows.join('')}</div>
+      <div class="confirm-total-row"><span>Total Pieces</span><span>${totalPieces} pcs · ${lineCount} items</span></div>
+      <div class="confirm-actions">
+        <button type="button" class="btn-edit-order" id="editOrderBtn">‹ Edit order</button>
+        <button type="button" class="btn-submit-final" id="submitOrderFinalBtn">Submit order to company</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', (e)=>{ if(e.target===overlay) closeOrderConfirm(); });
+  document.getElementById('editOrderBtn').addEventListener('click', closeOrderConfirm);
+  document.getElementById('submitOrderFinalBtn').addEventListener('click', async ()=>{
+    const btn = document.getElementById('submitOrderFinalBtn');
+    btn.disabled = true; btn.textContent = 'Submitting…';
+    const trackLink = await finalizeSubmitOrder();
+    showOrderSuccess(trackLink);
+  });
+}
+function showOrderSuccess(trackLink){
+  const overlay = document.getElementById('orderConfirmOverlay');
+  if(!overlay) return;
+  overlay.querySelector('.confirm-sheet').innerHTML = `
+    <div style="text-align:center;padding:10px 0 4px;">
+      <div style="font-size:38px;margin-bottom:10px;">✅</div>
+      <h2>Order submitted!</h2>
+      <p class="sub">We've received your order. WhatsApp should have opened with the details too.</p>
+      ${trackLink ? `
+      <div style="background:var(--row-alt);border:1px solid var(--border);border-radius:12px;padding:14px;margin:16px 0;text-align:left;">
+        <div style="font-size:11px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;font-weight:700;">Track your order</div>
+        <div style="font-size:12px;word-break:break-all;color:var(--green-dark);">${trackLink}</div>
+      </div>
+      <button type="button" class="btn-submit-final" id="copyTrackLinkBtn" style="width:100%;margin-bottom:10px;">📋 Copy tracking link</button>
+      ` : `<p class="sub">We couldn't generate a tracking link right now, but your order was still submitted.</p>`}
+      <button type="button" class="btn-edit-order" id="closeSuccessBtn" style="width:100%;">Done</button>
+    </div>
+  `;
+  const copyBtn = document.getElementById('copyTrackLinkBtn');
+  if(copyBtn) copyBtn.addEventListener('click', async ()=>{
+    try{ await navigator.clipboard.writeText(trackLink); copyBtn.textContent = '✓ Copied'; }
+    catch(e){ prompt('Copy this tracking link:', trackLink); }
+  });
+  document.getElementById('closeSuccessBtn').addEventListener('click', ()=>{
+    closeOrderConfirm();
+    resetAll(); // order sent to company — start fresh for the next one
+  });
+}
+function closeOrderConfirm(){
+  const o = document.getElementById('orderConfirmOverlay');
+  if(o) o.remove();
+}
+
+// Step 2: the actual send — same button used to do both WhatsApp + Order Ops.
+async function finalizeSubmitOrder(){
+  const waNumber = '919266725028';
+  const { lineCount, totalPieces } = getOrderStats();
+
+  // Generate the order id and its tracking link BEFORE any async work, so
+  // window.open() below still fires synchronously inside the click handler
+  // (a delayed window.open can get blocked as a popup by the browser).
+  const preId = uid();
+  const nowForLink = new Date();
+  const dayKeyForLink = nowForLink.getFullYear()+'-'+String(nowForLink.getMonth()+1).padStart(2,'0')+'-'+String(nowForLink.getDate()).padStart(2,'0');
+  const trackLink = `${location.href.split('?')[0]}?id=${encodeURIComponent(preId)}&d=${dayKeyForLink}`;
+
+  const lines = [];
+  lines.push('*Order*');
+  lines.push(`(${custDate})`);
+  lines.push(custName || '-');
+  lines.push(`Ph. No.- ${custPhone || '-'}`);
+  lines.push(`Address- ${custAddress || '-'}`);
+  lines.push('');
+
+  CATALOG.forEach(cat => {
+    cat.items.filter(it => totalPcs(it) > 0).forEach(it => {
+      const qty = Number(it.qty)||0;
+      const cases = Number(it.cases)||0;
+      const t = totalPcs(it);
+      let breakdown = '';
+      if(cases>0){
+        breakdown = ` (${cases} case${cases>1?'s':''} x ${it.caseSize}${qty>0?` + ${qty} pcs`:''})`;
+      }
+      lines.push(`${it.name} - ${it.size} : *${t}* pcs${breakdown}`);
+    });
+  });
+
+  lines.push('');
+  lines.push(`Total Items: ${lineCount}`);
+  lines.push(`*Total Pieces: ${totalPieces}*`);
+  lines.push('');
+  lines.push(`Track your order: ${trackLink}`);
+
+  const waMsg = encodeURIComponent(lines.join('\n'));
+
+  // Same button does both: opens WhatsApp AND submits the order directly
+  // into Order Ops, with no extra typing needed.
+  submitting = true; render();
+  window.open(`https://wa.me/${waNumber}?text=${waMsg}`, '_blank');
+  const result = await submitToOrderOps(preId);
+  submitting = false; render();
+  return result ? trackLink : null;
+}
+
+document.getElementById('buildFooter').textContent = 'build ' + FORM_BUILD;
+render(); // show immediately with the built-in catalog, no blank/loading screen
+loadLiveCatalog().then(()=>render()); // then swap in the live one once it arrives
+
+// Live sync every 5s — keeps catalog/customers fresh while building an
+// order (skipped while actively typing so it never disrupts a keystroke),
+// and keeps the tracking view's status current without needing a refresh.
+setInterval(()=>{
+  if(pageMode === 'track'){
+    if(trackDirectId && trackDirectState === 'found'){
+      loadDirectTrackOrder(true);
+    } else if(Array.isArray(trackResults)){
+      searchOrdersByPhone(true);
+    }
+  } else if(pageMode === 'order'){
+    refreshLiveCatalogSilent();
+  }
+}, 5000);
+</script>
+</body>
+</html>
