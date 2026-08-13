@@ -560,11 +560,15 @@ let idCounter = 0;
 let CATALOG = DEFAULT_CATALOG;
 function preprocessCatalog(){
   idCounter = 0;
-  CATALOG.forEach(cat => cat.items.forEach(it => {
-    it.id = 'i' + (idCounter++);
-    it.caseSize = it.caseSize!=null ? it.caseSize : getCaseSize(it);
-    it.key = itemKeyFor(it.name, it.size);
-  }));
+  CATALOG.sort((a,b)=>a.cat.localeCompare(b.cat));
+  CATALOG.forEach(cat => {
+    cat.items.sort((a,b)=>a.name.localeCompare(b.name) || a.size.localeCompare(b.size));
+    cat.items.forEach(it => {
+      it.id = 'i' + (idCounter++);
+      it.caseSize = it.caseSize!=null ? it.caseSize : getCaseSize(it);
+      it.key = itemKeyFor(it.name, it.size);
+    });
+  });
 }
 preprocessCatalog();
 // Converts the flat backend item list (same shape Order Ops uses) into the
