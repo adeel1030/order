@@ -3,7 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>M.A. Products — Order Form</title>
+<link rel="icon" type="image/png" href="icon-512.png">
+<link rel="apple-touch-icon" href="icon-512.png">
+<title>Order - M A Products INDIA</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -267,6 +269,7 @@
   .btn-wa:active{transform:scale(0.97);}
   .btn-wa:disabled{background:#B8B7A9;box-shadow:none;cursor:not-allowed;}
   .submit-note{font-size:10px;color:var(--ink-soft);text-align:center;margin-top:6px;}
+  .mono{font-family:'Courier New',monospace;}
 
   /* ---------- Track Order button + tracking mode ---------- */
   .form-alert-overlay{
@@ -392,6 +395,7 @@
 </head>
 <body>
 <div class="wrap" id="app"></div>
+<div id="buildFooter" class="mono" style="text-align:center;font-size:10px;opacity:0.45;padding:4px 0 20px;"></div>
 
 <script>
 /* =========================================================================
@@ -548,6 +552,18 @@ const CASE_SIZE_EXCEPTIONS = [
 function normalizeSize(size){
   return size.toLowerCase().replace(/\s+/g,'');
 }
+// Parses "25mL"/"1L"/"3 ml" etc into a comparable mL number, so items sort
+// by actual size (25 < 50 < 100) instead of alphabetically ("100" < "25").
+function sizeToMlForSort(size){
+  const norm = normalizeSize(size);
+  const m = norm.match(/^([\d.]+)(ml|l|kg|g)?$/);
+  if(!m) return 0;
+  const num = parseFloat(m[1]) || 0;
+  const unit = m[2] || 'ml';
+  if(unit==='l') return num*1000;
+  if(unit==='kg') return num*1000;
+  return num;
+}
 
 function getCaseSize(item){
   const norm = normalizeSize(item.size);
@@ -562,7 +578,7 @@ function preprocessCatalog(){
   idCounter = 0;
   CATALOG.sort((a,b)=>a.cat.localeCompare(b.cat));
   CATALOG.forEach(cat => {
-    cat.items.sort((a,b)=>a.name.localeCompare(b.name) || a.size.localeCompare(b.size));
+    cat.items.sort((a,b)=>a.name.localeCompare(b.name) || (sizeToMlForSort(a.size)-sizeToMlForSort(b.size)));
     cat.items.forEach(it => {
       it.id = 'i' + (idCounter++);
       it.caseSize = it.caseSize!=null ? it.caseSize : getCaseSize(it);
@@ -926,6 +942,7 @@ function getOrderStats(){
   return { lineCount, totalPieces };
 }
 
+const FORM_BUILD = "2026-08-13-favicon-sizesort-version1";
 const dropIcon = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C12 2 5 11.5 5 15.5C5 19.09 8.13 22 12 22C15.87 22 19 19.09 19 15.5C19 11.5 12 2 12 2Z" fill="white"/></svg>`;
 const COMPANY_LOGO = "https://static.wixstatic.com/media/f34ac6_16010ac0fe9c48739c4860abefec3cbb~mv2.png/v1/fill/w_410,h_409,al_c,lg_1,q_85,enc_avif,quality_auto/M%20A%20Products%20INDIA%20Logo.png";
 const COMPANY_NAME = "M A Products INDIA";
@@ -1330,6 +1347,7 @@ async function finalizeSubmitOrder(){
   return result ? trackLink : null;
 }
 
+document.getElementById('buildFooter').textContent = 'build ' + FORM_BUILD;
 render(); // show immediately with the built-in catalog, no blank/loading screen
 loadLiveCatalog().then(()=>render()); // then swap in the live one once it arrives
 
