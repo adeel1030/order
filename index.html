@@ -386,6 +386,11 @@
     font-family:'Inter',sans-serif;font-weight:700;font-size:14.5px;padding:13px 16px;border-radius:12px;cursor:pointer;
   }
   .btn-submit-final:disabled{background:#B8B7A9;cursor:not-allowed;}
+  .confirm-location{border-radius:11px;padding:10px 12px;font-size:12.5px;font-family:'Inter',sans-serif;text-align:center;margin:4px 0 12px;}
+  .confirm-location.pending{background:var(--row-alt);color:var(--ink-soft);}
+  .confirm-location.success{background:#E4F3E8;color:var(--green-dark);font-weight:700;}
+  .confirm-location.error{background:#FCE2DF;color:#8A2E24;}
+  .location-retry-btn{margin-top:6px;background:#8A2E24;color:#fff;border:none;border-radius:9px;padding:8px 16px;font-family:'Inter',sans-serif;font-weight:700;font-size:12px;cursor:pointer;}
 
   @media (prefers-reduced-motion: reduce){
     html{scroll-behavior:auto;}
@@ -404,7 +409,13 @@
    tab, tagged as "submitted by website", alongside a normal WhatsApp send.
    ========================================================================= */
 const ORDEROPS_API_URL = "https://script.google.com/macros/s/AKfycbzGTJDC1jXEb15S2QQl_G5e-RBlRhiEfsC9rJwaXYiJTfB5mUJ8BX6aOQFGqTUKWIht/exec";
-const ORDEROPS_SECRET = "MyOrderOps2026Secret";
+// A separate, restricted secret — NOT the same one order-ops.html uses.
+// This page is public (no login), so this secret is necessarily visible to
+// anyone who views the page source — the backend only grants it read
+// access to customers/catalog/ready-stock/orders, and write access to
+// customers/orders only. It can never see or touch staff accounts,
+// passwords, expenses, or anything else internal.
+const ORDEROPS_SECRET = "MOI-PublicForm-9fK2mQ7xR4";
 
 async function orderOpsFetchAll(){
   const res = await fetch(`${ORDEROPS_API_URL}?secret=${encodeURIComponent(ORDEROPS_SECRET)}&_=${Date.now()}`);
@@ -895,7 +906,7 @@ function getOrderStats(){
   return { lineCount, totalPieces };
 }
 
-const FORM_BUILD = "2026-08-13-nofallback1";
+const FORM_BUILD = "2026-08-14-security-fix1";
 const dropIcon = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C12 2 5 11.5 5 15.5C5 19.09 8.13 22 12 22C15.87 22 19 19.09 19 15.5C19 11.5 12 2 12 2Z" fill="white"/></svg>`;
 const COMPANY_LOGO = "https://static.wixstatic.com/media/f34ac6_16010ac0fe9c48739c4860abefec3cbb~mv2.png/v1/fill/w_410,h_409,al_c,lg_1,q_85,enc_avif,quality_auto/M%20A%20Products%20INDIA%20Logo.png";
 const COMPANY_NAME = "M A Products INDIA";
@@ -1055,23 +1066,37 @@ function updateMeta(el){
     const match = knownCustomers.find(c => (c.name||'').trim().toLowerCase() === typedClean.toLowerCase());
     if(match){
       custName = match.name; // normalized, no "(City)" suffix left in the field
-      custCity = match.city || custCity;
-      custAddress = match.address || custAddress;
-      custGstin = match.gstin || custGstin;
-      if(match.phone){ custPhone = match.phone; phoneMasked = true; }
+      // Always set from the match directly (never `|| custCity` etc.) — a
+      // field missing from THIS match must never silently inherit a value
+      // left over from a previous match or from free typing before it.
+      custCity = match.city || '';
+      custAddress = match.address || '';
+      custGstin = match.gstin || '';
+      custPhone = match.phone || '';
+      phoneMasked = !!match.phone;
       partyLocked = true; // existing party — details come from the office record, not editable here
       render();
       const input = document.getElementById('custName');
       if(input){ input.focus(); const v = input.value; input.value=''; input.value=v; input.setSelectionRange(v.length, v.length); }
       return;
     }
+    const wasLocked = partyLocked;
     custName = el.value;
     phoneMasked = false;
-    const wasLocked = partyLocked;
     partyLocked = false; // no longer matches a known party — free to enter fresh details
     if(wasLocked){
-      // Just unlocked — the other fields' readonly state needs a re-render
-      // to actually clear (their DOM attributes were baked in at last render).
+      // SECURITY: the name no longer matches the party it was locked to —
+      // clear every field that came from that match (phone, city, address,
+      // GSTIN). Without this, editing the name away from a match used to
+      // leave that party's real phone number and other details sitting in
+      // the form, now unmasked and editable, for whoever's now typing a
+      // different name to see.
+      custPhone = '';
+      custCity = '';
+      custAddress = '';
+      custGstin = '';
+      // The other fields' readonly state also needs a re-render to
+      // actually clear (their DOM attributes were baked in at last render).
       render();
       const input = document.getElementById('custName');
       if(input){ input.focus(); const v = input.value; input.value=''; input.value=v; input.setSelectionRange(v.length, v.length); }
@@ -1100,6 +1125,8 @@ function resetAll(){
   partyLocked = false;
   formErrors = { custName:false, custPhone:false, custCity:false };
   searchQuery = '';
+  orderLocation = null;
+  orderLocationStatus = 'idle';
   render();
 }
 
@@ -1140,7 +1167,9 @@ async function submitToOrderOps(preGeneratedId){
       customerPhone: cust.phone || '', customerAddress: cust.address || '', customerGstin: cust.gstin || '',
       items, status:'pending', fillingStatus:'pending', packagingStatus:'pending', stockDeducted:false, processedAt:null,
       createdBy:'Website form', createdByUsername:'website', createdByRole:'website',
-      source:'website', createdAt: nowTs
+      source:'website', createdAt: nowTs,
+      orderLat: orderLocation ? orderLocation.lat : null,
+      orderLng: orderLocation ? orderLocation.lng : null,
     };
 
     // Orders are stored one row PER CALENDAR DAY in Order Ops (e.g.
@@ -1162,6 +1191,49 @@ async function submitToOrderOps(preGeneratedId){
     // Non-fatal: the WhatsApp message still goes out even if this fails.
     return null;
   }
+}
+
+// GPS is mandatory for every order — captured right when the review screen
+// opens (not on final submit) so it's already resolved by the time the
+// person taps Submit, keeping window.open() synchronous for WhatsApp
+// (a delayed window.open gets blocked as a popup by the browser).
+let orderLocation = null; // {lat, lng} once resolved
+let orderLocationStatus = 'idle'; // 'idle' | 'pending' | 'success' | 'error'
+function requestOrderLocation(){
+  orderLocationStatus = 'pending';
+  updateLocationStatusUI();
+  if(!navigator.geolocation){
+    orderLocationStatus = 'error';
+    updateLocationStatusUI();
+    return;
+  }
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      orderLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+      orderLocationStatus = 'success';
+      updateLocationStatusUI();
+    },
+    () => {
+      orderLocation = null;
+      orderLocationStatus = 'error';
+      updateLocationStatusUI();
+    },
+    { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 }
+  );
+}
+function locationStatusHtml(){
+  if(orderLocationStatus==='pending') return `<div class="confirm-location pending">📍 Getting your location…</div>`;
+  if(orderLocationStatus==='success') return `<div class="confirm-location success">📍 Location confirmed ✓</div>`;
+  if(orderLocationStatus==='error') return `<div class="confirm-location error">⚠️ Location is required to submit an order.<br/><button type="button" id="retryLocationBtn" class="location-retry-btn">Enable location &amp; retry</button></div>`;
+  return '';
+}
+function updateLocationStatusUI(){
+  const el = document.getElementById('orderLocationStatus');
+  if(el) el.innerHTML = locationStatusHtml();
+  const retryBtn = document.getElementById('retryLocationBtn');
+  if(retryBtn) retryBtn.addEventListener('click', requestOrderLocation);
+  const submitBtn = document.getElementById('submitOrderFinalBtn');
+  if(submitBtn) submitBtn.disabled = orderLocationStatus !== 'success';
 }
 
 // Step 1: validate, then show the "review before sending" dialog.
@@ -1205,9 +1277,10 @@ function openOrderConfirm(){
       </div>
       <div class="confirm-items">${rows.join('')}</div>
       <div class="confirm-total-row"><span>Total Pieces</span><span>${totalPieces} pcs · ${lineCount} items</span></div>
+      <div id="orderLocationStatus">${locationStatusHtml()}</div>
       <div class="confirm-actions">
         <button type="button" class="btn-edit-order" id="editOrderBtn">‹ Edit order</button>
-        <button type="button" class="btn-submit-final" id="submitOrderFinalBtn">Submit order to company</button>
+        <button type="button" class="btn-submit-final" id="submitOrderFinalBtn" disabled>Submit order to company</button>
       </div>
     </div>
   `;
@@ -1215,11 +1288,13 @@ function openOrderConfirm(){
   overlay.addEventListener('click', (e)=>{ if(e.target===overlay) closeOrderConfirm(); });
   document.getElementById('editOrderBtn').addEventListener('click', closeOrderConfirm);
   document.getElementById('submitOrderFinalBtn').addEventListener('click', async ()=>{
+    if(orderLocationStatus!=='success'){ showAlert('Please allow location access — it\'s required to submit an order.'); return; }
     const btn = document.getElementById('submitOrderFinalBtn');
     btn.disabled = true; btn.textContent = 'Submitting…';
     const trackLink = await finalizeSubmitOrder();
     showOrderSuccess(trackLink);
   });
+  requestOrderLocation(); // start immediately — resolved well before the person finishes reviewing
 }
 function showOrderSuccess(trackLink){
   const overlay = document.getElementById('orderConfirmOverlay');
