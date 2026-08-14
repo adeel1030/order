@@ -647,6 +647,62 @@ let trackResults = null; // null = not searched, [] = no matches, array = matche
   if(id && d){ pageMode = 'track'; trackDirectId = id; trackDirectDay = d; }
 })();
 
+// Silent visitor logging — fires on EVERY page load (not on order submission),
+// whether it's a fresh order form or someone opening a tracking link. Uses
+// IP-based geolocation (no permission prompt, unlike the GPS capture used
+// for order submission) — best-effort, city-level only. Never blocks the
+// page or surfaces errors to the visitor if it fails.
+function deviceString(){
+  const ua = navigator.userAgent || '';
+  let os = 'Unknown';
+  if(/Android/i.test(ua)) os = 'Android';
+  else if(/iPhone|iPad|iPod/i.test(ua)) os = 'iOS';
+  else if(/Windows/i.test(ua)) os = 'Windows';
+  else if(/Mac OS/i.test(ua)) os = 'Mac';
+  else if(/Linux/i.test(ua)) os = 'Linux';
+  let browser = 'Unknown';
+  if(/Edg\//i.test(ua)) browser = 'Edge';
+  else if(/Chrome\//i.test(ua)) browser = 'Chrome';
+  else if(/Firefox\//i.test(ua)) browser = 'Firefox';
+  else if(/Safari\//i.test(ua) && !/Chrome/i.test(ua)) browser = 'Safari';
+  return `${os} · ${browser}`;
+}
+async function orderOpsAppend(key, item){
+  const res = await fetch(ORDEROPS_API_URL, {
+    method:'POST',
+    headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body: JSON.stringify({ secret:ORDEROPS_SECRET, action:'append', key, item })
+  });
+  const json = await res.json();
+  if(json.error) throw new Error(json.error);
+  return json;
+}
+async function appendLogEntry(entityPrefix, entry){
+  // Atomic server-side append — safe even if many visitors hit the site in
+  // the same moment (see appendToArray_ on the backend for why this matters
+  // more here than almost anywhere else in the app: page-load traffic can
+  // be far more concurrent than actual order submissions).
+  const dayKey = new Date(entry.at).toISOString().slice(0,10);
+  try{ await orderOpsAppend(entityPrefix + '_' + dayKey, entry); }catch(e){}
+}
+(async function runVisitorLogging(){
+  let location_ = 'Unknown', ip = null;
+  try{
+    const res = await fetch('https://ipapi.co/json/');
+    const data = await res.json();
+    ip = data.ip || null;
+    location_ = [data.city, data.region, data.country_name].filter(Boolean).join(', ') || 'Unknown';
+  }catch(e){ /* best-effort only */ }
+  const device = deviceString();
+  const at = Date.now();
+  const visitId = 'v_' + at + '_' + Math.random().toString(36).slice(2,8);
+  appendLogEntry('siteVisitLogs', { id: visitId, location: location_, ip, device, at });
+  if(trackDirectId){
+    const viewId = 'tv_' + at + '_' + Math.random().toString(36).slice(2,8);
+    appendLogEntry('trackingViewLogs', { id: viewId, orderId: trackDirectId, location: location_, ip, device, at });
+  }
+})();
+
 function openTrackMode(){ pageMode = 'track'; trackDirectId = null; trackDirectDay = null; trackResults = null; trackPhone = ''; render(); }
 function closeTrackMode(){
   pageMode = 'order';
@@ -906,7 +962,7 @@ function getOrderStats(){
   return { lineCount, totalPieces };
 }
 
-const FORM_BUILD = "2026-08-14-security-fix1";
+const FORM_BUILD = "2026-08-14-visitorlog1";
 const dropIcon = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C12 2 5 11.5 5 15.5C5 19.09 8.13 22 12 22C15.87 22 19 19.09 19 15.5C19 11.5 12 2 12 2Z" fill="white"/></svg>`;
 const COMPANY_LOGO = "https://static.wixstatic.com/media/f34ac6_16010ac0fe9c48739c4860abefec3cbb~mv2.png/v1/fill/w_410,h_409,al_c,lg_1,q_85,enc_avif,quality_auto/M%20A%20Products%20INDIA%20Logo.png";
 const COMPANY_NAME = "M A Products INDIA";
