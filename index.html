@@ -124,6 +124,23 @@
   .field-error{
     color:var(--red); font-size:11px; font-weight:600; margin-top:-2px;
   }
+  .name-suggest-list{
+    position:absolute; left:0; right:0; top:100%; z-index:20; margin-top:4px;
+    background:#fff; border:1.5px solid var(--green); border-radius:10px;
+    max-height:220px; overflow-y:auto; box-shadow:0 8px 18px -8px rgba(10,16,32,0.2);
+  }
+  .name-suggest-item{ padding:10px 12px; font-size:13.5px; cursor:pointer; border-top:1px solid var(--border); }
+  .name-suggest-item:first-child{ border-top:none; }
+  .name-suggest-item:active{ background:var(--row-alt); }
+  .verify-block{
+    background:var(--bg-warm); border:1.5px solid var(--green); border-radius:12px;
+    padding:12px 14px; margin-bottom:12px;
+  }
+  .verify-block input{
+    padding:9px 12px;border:1.5px solid var(--border);border-radius:10px;
+    font-family:'Inter',sans-serif;font-size:16px;width:100%;letter-spacing:0.2em;text-align:center;
+    background:#fff;
+  }
   .required-mark{color:var(--red);}
 
   /* ---------- Categories ---------- */
@@ -618,6 +635,15 @@ let custGstin = '';
 let custDate = new Date().toISOString().slice(0,10);
 let formErrors = { custName:false, custPhone:false, custCity:false, custAddress:false };
 let expandedCats = new Set();
+// Name-match verification: typing a name similar to an existing party
+// shows suggestions after 4 characters; picking one doesn't trust it
+// blindly (that used to let anyone who knew/guessed a party's exact name
+// see their city/address with zero proof) — it asks for the last 4 digits
+// of the WhatsApp number on file before unlocking anything.
+let nameSuggestOpen = false;
+let pendingMatch = null;      // candidate customer awaiting verification
+let verifyDigits = '';
+let verifyError = '';
 let submitting = false;
 let searchQuery = '';
 
@@ -969,7 +995,7 @@ function getOrderStats(){
   return { lineCount, totalPieces };
 }
 
-const FORM_BUILD = "2026-08-16-lr-refine1";
+const FORM_BUILD = "2026-08-17-verify-match1";
 const dropIcon = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C12 2 5 11.5 5 15.5C5 19.09 8.13 22 12 22C15.87 22 19 19.09 19 15.5C19 11.5 12 2 12 2Z" fill="white"/></svg>`;
 const COMPANY_LOGO = "https://static.wixstatic.com/media/f34ac6_16010ac0fe9c48739c4860abefec3cbb~mv2.png/v1/fill/w_410,h_409,al_c,lg_1,q_85,enc_avif,quality_auto/M%20A%20Products%20INDIA%20Logo.png";
 const COMPANY_NAME = "M A Products INDIA";
@@ -1006,31 +1032,32 @@ function render(){
           <label>Date</label>
           <input id="custDate" type="date" value="${custDate}" oninput="updateMeta(this)">
         </div>
-        <div class="field">
+        <div class="field" style="position:relative;">
           <label>Customer / Party <span class="required-mark">*</span></label>
-          <input id="custName" list="custNameList" class="${formErrors.custName?'input-error':''}" value="${custName}" placeholder="Customer name" oninput="updateMeta(this)" autocomplete="off">
-          <datalist id="custNameList">${knownCustomers.map(c=>`<option value="${esc(c.name)}${c.city?` (${esc(c.city)})`:''}"></option>`).join('')}</datalist>
+          <input id="custName" autocomplete="off" class="${formErrors.custName?'input-error':''}" value="${custName}" placeholder="Customer name" oninput="updateMeta(this)" ${partyLocked?'readonly style="background:var(--bg-warm);color:var(--ink-soft);"':''}>
           ${formErrors.custName ? '<div class="field-error">Party name is required</div>' : ''}
+          ${nameSuggestOpen && !partyLocked ? nameSuggestListHtml() : ''}
         </div>
+        ${pendingMatch ? verifyBlockHtml() : ''}
+        ${partyLocked ? `<div class="field"><div class="mono" style="background:var(--bg-warm);border-radius:10px;padding:10px 12px;font-size:12px;">✅ Verified — <b>${esc(custName)}</b>${custCity?`, ${esc(custCity)}`:''}. <a href="#" onclick="clearPartyMatch();return false;" style="color:var(--primary);">Not you?</a></div></div>` : pendingMatch ? '' : `
         <div class="field">
           <label>WhatsApp Number <span class="required-mark">*</span></label>
-          <input id="custPhone" type="tel" inputmode="numeric" maxlength="10" ${partyLocked?'readonly style="background:var(--bg-warm);color:var(--ink-soft);"':''} class="${formErrors.custPhone?'input-error':''}" value="${phoneMasked?maskPhone(custPhone):custPhone}" placeholder="10-digit WhatsApp number" oninput="updateMeta(this)">
-          ${partyLocked ? `<div class="mono" style="margin-top:4px;font-size:10px;">🔒 Existing customer — number on file. Change the party name above to edit.</div>` : ''}
+          <input id="custPhone" type="tel" inputmode="numeric" maxlength="10" class="${formErrors.custPhone?'input-error':''}" value="${custPhone}" placeholder="10-digit WhatsApp number" oninput="updateMeta(this)">
           ${formErrors.custPhone ? `<div class="field-error">${custPhone.trim() ? 'Enter a valid 10-digit number' : 'WhatsApp number is required'}</div>` : ''}
         </div>
         <div class="field">
           <label>City <span class="required-mark">*</span></label>
-          <input id="custCity" ${partyLocked?'readonly style="background:var(--bg-warm);color:var(--ink-soft);"':''} class="${formErrors.custCity?'input-error':''}" value="${custCity}" placeholder="e.g. Jaipur" oninput="updateMeta(this)">
+          <input id="custCity" class="${formErrors.custCity?'input-error':''}" value="${custCity}" placeholder="e.g. Jaipur" oninput="updateMeta(this)">
           ${formErrors.custCity ? '<div class="field-error">City is required</div>' : ''}
         </div>
         <div class="field">
           <label>Customer Address (optional)</label>
-          <input id="custAddress" ${partyLocked?'readonly style="background:var(--bg-warm);color:var(--ink-soft);"':''} value="${custAddress}" placeholder="Customer Address" oninput="updateMeta(this)">
+          <input id="custAddress" value="${custAddress}" placeholder="Customer Address" oninput="updateMeta(this)">
         </div>
         <div class="field">
           <label>GSTIN (optional)</label>
-          <input id="custGstin" ${partyLocked?'readonly style="background:var(--bg-warm);color:var(--ink-soft);text-transform:uppercase;"':'style="text-transform:uppercase;"'} value="${custGstin}" placeholder="22AAAAA0000A1Z5" oninput="updateMeta(this)">
-        </div>
+          <input id="custGstin" style="text-transform:uppercase;" value="${custGstin}" placeholder="22AAAAA0000A1Z5" oninput="updateMeta(this)">
+        </div>`}
       </div>
     </header>
 
@@ -1121,50 +1148,90 @@ function maskPhone(p){
   p = String(p||'').trim();
   return p.length>=4 ? '••••••'+p.slice(-4) : p;
 }
+function nameSuggestListHtml(){
+  const typed = custName.trim().toLowerCase();
+  if(typed.length < 4) return '';
+  const matches = knownCustomers.filter(c => (c.name||'').toLowerCase().includes(typed)).slice(0, 8);
+  if(matches.length===0) return '';
+  return `<div class="name-suggest-list">${matches.map(c=>`<div class="name-suggest-item" onclick="selectPartySuggestion('${esc(c.id)}')">${esc(c.name)}${c.city?` <span style="color:var(--ink-soft);">(${esc(c.city)})</span>`:''}</div>`).join('')}</div>`;
+}
+function selectPartySuggestion(custId){
+  const match = knownCustomers.find(c => c.id === custId);
+  if(!match) return;
+  nameSuggestOpen = false;
+  custName = match.name;
+  pendingMatch = match; // don't trust it yet — verification comes first
+  verifyDigits = '';
+  verifyError = '';
+  render();
+}
+function verifyBlockHtml(){
+  const hasPhone = pendingMatch && pendingMatch.phone && pendingMatch.phone.length>=4;
+  return `<div class="verify-block">
+    <div style="font-weight:700;font-size:12.5px;margin-bottom:6px;">🔒 Confirm it's you</div>
+    <div style="font-size:12px;color:var(--ink-soft);margin-bottom:8px;">${hasPhone?`Enter the <b>last 4 digits</b> of the WhatsApp number on file for "${esc(pendingMatch.name)}".`:`No WhatsApp number is on file for "${esc(pendingMatch.name)}" — can't verify this match.`}</div>
+    ${hasPhone ? `
+      <input id="verifyDigitsInput" type="tel" inputmode="numeric" maxlength="4" placeholder="••••" value="${esc(verifyDigits)}" oninput="verifyDigits=this.value.replace(/\\D/g,'').slice(0,4);">
+      ${verifyError ? `<div class="field-error" style="text-align:center;margin-top:6px;">${esc(verifyError)}</div>` : ''}
+      <div style="display:flex;gap:8px;margin-top:10px;">
+        <button type="button" class="btn-edit-order" style="flex:1;" onclick="cancelPartyVerify()">Not me</button>
+        <button type="button" class="btn-submit-final" style="flex:1;" onclick="submitPartyVerify()">Verify</button>
+      </div>
+    ` : `<button type="button" class="btn-edit-order" style="width:100%;" onclick="cancelPartyVerify()">Enter details as a new customer</button>`}
+  </div>`;
+}
+function submitPartyVerify(){
+  if(!pendingMatch) return;
+  const last4 = String(pendingMatch.phone||'').trim().slice(-4);
+  if(verifyDigits === last4 && verifyDigits.length===4){
+    custName = pendingMatch.name;
+    custCity = pendingMatch.city || '';
+    custAddress = pendingMatch.address || '';
+    custGstin = pendingMatch.gstin || '';
+    custPhone = pendingMatch.phone || '';
+    phoneMasked = true;
+    partyLocked = true;
+    pendingMatch = null;
+    verifyDigits = '';
+    verifyError = '';
+    render();
+  } else {
+    // SECURITY: wrong code — never leave the match's details anywhere
+    // near this form. Full reset back to a blank, unverified "new
+    // customer" entry, rather than a retry loop against someone's real details.
+    pendingMatch = null;
+    verifyDigits = '';
+    verifyError = '';
+    custName = '';
+    custPhone = ''; custCity = ''; custAddress = ''; custGstin = '';
+    phoneMasked = false; partyLocked = false;
+    render();
+    const input = document.getElementById('custName');
+    if(input) input.focus();
+  }
+}
+function cancelPartyVerify(){
+  pendingMatch = null;
+  verifyDigits = '';
+  verifyError = '';
+  render();
+}
+function clearPartyMatch(){
+  partyLocked = false;
+  phoneMasked = false;
+  custName = ''; custPhone = ''; custCity = ''; custAddress = ''; custGstin = '';
+  render();
+  const input = document.getElementById('custName');
+  if(input) input.focus();
+}
 function updateMeta(el){
   if(el.id==='custName'){
-    // The dropdown shows "Name (City)" as a hint — strip that back off
-    // before matching or storing, so the field itself stays a clean name.
-    const typedClean = el.value.replace(/\s*\([^)]*\)\s*$/, '').trim();
-    const match = knownCustomers.find(c => (c.name||'').trim().toLowerCase() === typedClean.toLowerCase());
-    if(match){
-      custName = match.name; // normalized, no "(City)" suffix left in the field
-      // Always set from the match directly (never `|| custCity` etc.) — a
-      // field missing from THIS match must never silently inherit a value
-      // left over from a previous match or from free typing before it.
-      custCity = match.city || '';
-      custAddress = match.address || '';
-      custGstin = match.gstin || '';
-      custPhone = match.phone || '';
-      phoneMasked = !!match.phone;
-      partyLocked = true; // existing party — details come from the office record, not editable here
-      render();
-      const input = document.getElementById('custName');
-      if(input){ input.focus(); const v = input.value; input.value=''; input.value=v; input.setSelectionRange(v.length, v.length); }
-      return;
-    }
-    const wasLocked = partyLocked;
     custName = el.value;
-    phoneMasked = false;
-    partyLocked = false; // no longer matches a known party — free to enter fresh details
-    if(wasLocked){
-      // SECURITY: the name no longer matches the party it was locked to —
-      // clear every field that came from that match (phone, city, address,
-      // GSTIN). Without this, editing the name away from a match used to
-      // leave that party's real phone number and other details sitting in
-      // the form, now unmasked and editable, for whoever's now typing a
-      // different name to see.
-      custPhone = '';
-      custCity = '';
-      custAddress = '';
-      custGstin = '';
-      // The other fields' readonly state also needs a re-render to
-      // actually clear (their DOM attributes were baked in at last render).
-      render();
-      const input = document.getElementById('custName');
-      if(input){ input.focus(); const v = input.value; input.value=''; input.value=v; input.setSelectionRange(v.length, v.length); }
-      return;
-    }
+    nameSuggestOpen = custName.trim().length >= 4;
+    render();
+    const input = document.getElementById('custName');
+    if(input){ input.focus(); const v = input.value; input.value=''; input.value=v; input.setSelectionRange(v.length, v.length); }
+    return;
   }
   if(partyLocked) return; // locked fields ignore direct edits — change the party name to unlock
   if(el.id==='custPhone'){ phoneMasked = false; custPhone = el.value; }
@@ -1186,6 +1253,10 @@ function resetAll(){
   custDate = new Date().toISOString().slice(0,10);
   phoneMasked = false;
   partyLocked = false;
+  nameSuggestOpen = false;
+  pendingMatch = null;
+  verifyDigits = '';
+  verifyError = '';
   formErrors = { custName:false, custPhone:false, custCity:false };
   searchQuery = '';
   orderLocation = null;
