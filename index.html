@@ -356,6 +356,7 @@
   .track-status-banner.pending{background:#FDF3DC;color:#7A5A0A;}
   .track-status-banner.processing{background:#E4EEFB;color:#1E4D8C;}
   .track-status-banner.ready{background:var(--green-pale);color:var(--green-dark);}
+  .track-status-banner.packed{background:var(--green-pale);color:var(--green-dark);}
   .track-status-banner.processed{background:var(--green-pale);color:var(--green-dark);}
   .track-status-banner.rejected{background:#FBEAE8;color:var(--red);}
   .track-items-list{border-top:1px solid var(--border);padding-top:10px;}
@@ -672,12 +673,13 @@ let searchQuery = '';
 
 /* ---------- Order tracking (built into this page — no separate file) ---------- */
 const TRACK_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000; // link stays valid 7 days after "Processed"
-const TRACK_STAGE_ORDER = ['pending','processing','ready','processed'];
-const TRACK_STAGE_LABEL = { pending:'Received', processing:'Preparing', ready:'Ready', processed:'Dispatched' };
+const TRACK_STAGE_ORDER = ['pending','processing','ready','packed','processed'];
+const TRACK_STAGE_LABEL = { pending:'Received', processing:'Preparing', ready:'All Items are Ready', packed:'Packed', processed:'Dispatched' };
 const TRACK_STATUS_TEXT = {
   pending:'⏳ Your order has been received and is waiting to be confirmed.',
   processing:'🔧 Your order is being prepared.',
-  ready:'📦 Your order is packed and ready to dispatch.',
+  ready:'✅ All items for your order are ready.',
+  packed:'📦 Your order is packed and ready to dispatch.',
   processed:'✅ Your order has been dispatched. Thank you!',
   rejected:'✖ This order was not accepted. Please contact us for details.',
 };
@@ -862,7 +864,7 @@ function trackOrderCardHtml(order){
       // remaining item is definitionally Ready. While still Processing,
       // derive it live from current stock — the same automatic check that
       // drives the order's own Processing -> Ready transition.
-      const isReady = (status==='ready' || status==='processed') || (trackReadyStock[it.key]||0) >= 0;
+      const isReady = (status==='ready' || status==='packed' || status==='processed') || (trackReadyStock[it.key]||0) >= 0;
       statusTag = isReady
         ? `<span style="color:var(--green);font-weight:700;font-size:10.5px;"> ✅ Ready</span>`
         : `<span style="color:var(--gold);font-weight:700;font-size:10.5px;"> 🔧 Under Packing</span>`;
@@ -1073,7 +1075,7 @@ function getOrderStats(){
   return { lineCount, totalPieces };
 }
 
-const FORM_BUILD = "2026-08-18-lr-embed-fix1";
+const FORM_BUILD = "2026-08-18-packed-stage1";
 const dropIcon = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C12 2 5 11.5 5 15.5C5 19.09 8.13 22 12 22C15.87 22 19 19.09 19 15.5C19 11.5 12 2 12 2Z" fill="white"/></svg>`;
 const COMPANY_LOGO = "https://static.wixstatic.com/media/f34ac6_16010ac0fe9c48739c4860abefec3cbb~mv2.png/v1/fill/w_410,h_409,al_c,lg_1,q_85,enc_avif,quality_auto/M%20A%20Products%20INDIA%20Logo.png";
 const COMPANY_NAME = "M A Products INDIA";
