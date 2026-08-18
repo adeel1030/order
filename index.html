@@ -408,6 +408,29 @@
   .confirm-location.success{background:#E4F3E8;color:var(--green-dark);font-weight:700;}
   .confirm-location.error{background:#FCE2DF;color:#8A2E24;}
   .location-retry-btn{margin-top:6px;background:#8A2E24;color:#fff;border:none;border-radius:9px;padding:8px 16px;font-family:'Inter',sans-serif;font-weight:700;font-size:12px;cursor:pointer;}
+  /* ---------- LR view dialog (tracking page) ---------- */
+  .lr-view-overlay{
+    position:fixed;inset:0;background:rgba(20,26,16,0.65);display:flex;align-items:center;justify-content:center;
+    z-index:200;padding:20px;
+  }
+  .lr-view-box{
+    background:var(--card);border-radius:16px;padding:16px;max-width:420px;width:100%;max-height:88vh;overflow-y:auto;
+    animation:formAlertPop .18s cubic-bezier(.2,.8,.3,1);
+  }
+  .lr-view-topbar{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+  .lr-download-btn{
+    flex:1;display:flex;align-items:center;justify-content:center;gap:6px;
+    background:var(--green);color:#fff;border:none;border-radius:10px;padding:11px 14px;
+    font-family:'Inter',sans-serif;font-weight:700;font-size:13px;text-decoration:none;cursor:pointer;
+  }
+  .lr-download-btn:active{transform:scale(0.97);}
+  .lr-view-close{
+    flex:0 0 auto;background:var(--row-alt);color:var(--ink-soft);border:1.5px solid var(--border);
+    width:38px;height:38px;border-radius:10px;font-size:15px;cursor:pointer;
+  }
+  .lr-view-number{font-family:'Inter',sans-serif;font-size:12.5px;color:var(--ink-soft);margin-bottom:10px;}
+  .lr-view-number b{color:var(--ink);}
+  .lr-view-img{width:100%;border-radius:11px;border:1px solid var(--border);display:block;}
 
   @media (prefers-reduced-motion: reduce){
     html{scroll-behavior:auto;}
@@ -864,7 +887,7 @@ function trackOrderCardHtml(order){
   // order is still Ready (before transport/dispatch info is even set), so
   // this shouldn't wait on that box's own status condition to show up.
   const lrDownloadHtml = (order.lrPhotoUrl && order.lrUploadedAt && (Date.now()-order.lrUploadedAt)<30*24*60*60*1000) ? `
-    <a href="${esc(order.lrPhotoUrl)}" target="_blank" rel="noopener" style="display:block;text-align:center;margin-bottom:12px;background:var(--green-pale);border:1.5px solid var(--green-dark);color:var(--green-dark);font-weight:700;font-size:12.5px;padding:11px;border-radius:11px;text-decoration:none;">📄 Download LR</a>` : '';
+    <button type="button" onclick="openLRViewDialog()" style="display:block;width:100%;text-align:center;margin-bottom:12px;background:var(--green-pale);border:1.5px solid var(--green-dark);color:var(--green-dark);font-weight:700;font-size:12.5px;padding:11px;border-radius:11px;cursor:pointer;font-family:'Inter',sans-serif;">📄 View / Download LR</button>` : '';
   return `
     <div class="track-order-card">
       <div class="track-greeting">Hello, ${esc(order.customerName||'there')}! 👋</div>
@@ -883,6 +906,34 @@ function trackOrderCardHtml(order){
       ${dispatchHtml}
       <div class="track-items-list">${itemsHtml}${cancelledHtml}</div>
     </div>`;
+}
+// LR "View" dialog — reads straight off trackDirectOrder (the only order
+// ever tracked on this direct-link view, so no id needs to be threaded
+// through the inline onclick, which also sidesteps any quote-escaping risk
+// from putting a Drive URL / free-typed LR number into an attribute string).
+function openLRViewDialog(){
+  const order = trackDirectOrder;
+  if(!order || !order.lrPhotoUrl) return;
+  closeLRView();
+  const overlay = document.createElement('div');
+  overlay.className = 'lr-view-overlay';
+  overlay.id = 'lrViewOverlay';
+  overlay.innerHTML = `
+    <div class="lr-view-box">
+      <div class="lr-view-topbar">
+        <a href="${esc(order.lrPhotoUrl)}" target="_blank" rel="noopener" class="lr-download-btn">⬇ Download LR</a>
+        <button type="button" class="lr-view-close" id="lrViewCloseBtn">✕</button>
+      </div>
+      ${order.lrNumber ? `<div class="lr-view-number">LR Number: <b>${esc(order.lrNumber)}</b></div>` : ''}
+      <img src="${esc(order.lrPhotoUrl)}" class="lr-view-img" alt="LR photo" />
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', (e)=>{ if(e.target===overlay) closeLRView(); });
+  document.getElementById('lrViewCloseBtn').addEventListener('click', closeLRView);
+}
+function closeLRView(){
+  const o = document.getElementById('lrViewOverlay');
+  if(o) o.remove();
 }
 // Phone-search results only ever show party name + status — full item-level
 // detail (and the exact tracking link) is reserved for someone who actually
@@ -995,7 +1046,7 @@ function getOrderStats(){
   return { lineCount, totalPieces };
 }
 
-const FORM_BUILD = "2026-08-17-verify-match1";
+const FORM_BUILD = "2026-08-18-lr-view-dialog1";
 const dropIcon = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C12 2 5 11.5 5 15.5C5 19.09 8.13 22 12 22C15.87 22 19 19.09 19 15.5C19 11.5 12 2 12 2Z" fill="white"/></svg>`;
 const COMPANY_LOGO = "https://static.wixstatic.com/media/f34ac6_16010ac0fe9c48739c4860abefec3cbb~mv2.png/v1/fill/w_410,h_409,al_c,lg_1,q_85,enc_avif,quality_auto/M%20A%20Products%20INDIA%20Logo.png";
 const COMPANY_NAME = "M A Products INDIA";
