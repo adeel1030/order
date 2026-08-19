@@ -457,15 +457,28 @@ const ORDEROPS_API_URL = "https://script.google.com/macros/s/AKfycbzGTJDC1jXEb15
 // customers/orders only. It can never see or touch staff accounts,
 // passwords, expenses, or anything else internal.
 const ORDEROPS_SECRET = "MOI-PublicForm-9fK2mQ7xR4";
+// A raw fetch() has NO timeout of its own — on a slow/unreliable connection
+// (mobile data especially), a request that never gets a response just hangs
+// forever with no error, which looks exactly like "stuck loading forever,
+// works on laptop/WiFi but not on mobile". This wraps every backend call
+// with an AbortController so a stalled request fails after a bounded wait
+// instead of hanging indefinitely.
+const DEFAULT_FETCH_TIMEOUT_MS = 25000;
+function fetchWithTimeout(url, options, timeoutMs){
+  const controller = new AbortController();
+  const timer = setTimeout(()=>controller.abort(), timeoutMs || DEFAULT_FETCH_TIMEOUT_MS);
+  return fetch(url, Object.assign({}, options||{}, { signal: controller.signal }))
+    .finally(()=>clearTimeout(timer));
+}
 
 async function orderOpsFetchAll(){
-  const res = await fetch(`${ORDEROPS_API_URL}?secret=${encodeURIComponent(ORDEROPS_SECRET)}&_=${Date.now()}`);
+  const res = await fetchWithTimeout(`${ORDEROPS_API_URL}?secret=${encodeURIComponent(ORDEROPS_SECRET)}&_=${Date.now()}`);
   const json = await res.json();
   if(json.error) throw new Error(json.error);
   return json.data || {};
 }
 async function orderOpsSave(key, value){
-  const res = await fetch(ORDEROPS_API_URL, {
+  const res = await fetchWithTimeout(ORDEROPS_API_URL, {
     method:'POST',
     headers:{'Content-Type':'text/plain;charset=utf-8'},
     body: JSON.stringify({ secret:ORDEROPS_SECRET, action:'save', key, value })
@@ -719,7 +732,7 @@ function deviceString(){
   return `${os} · ${browser}`;
 }
 async function orderOpsAppend(key, item){
-  const res = await fetch(ORDEROPS_API_URL, {
+  const res = await fetchWithTimeout(ORDEROPS_API_URL, {
     method:'POST',
     headers:{'Content-Type':'text/plain;charset=utf-8'},
     body: JSON.stringify({ secret:ORDEROPS_SECRET, action:'append', key, item })
@@ -739,7 +752,7 @@ async function appendLogEntry(entityPrefix, entry){
 (async function runVisitorLogging(){
   let location_ = 'Unknown', ip = null;
   try{
-    const res = await fetch('https://ipapi.co/json/');
+    const res = await fetchWithTimeout('https://ipapi.co/json/', undefined, 6000); // best-effort only — short timeout so a slow/blocked third party never lingers
     const data = await res.json();
     ip = data.ip || null;
     location_ = [data.city, data.region, data.country_name].filter(Boolean).join(', ') || 'Unknown';
@@ -1075,7 +1088,7 @@ function getOrderStats(){
   return { lineCount, totalPieces };
 }
 
-const FORM_BUILD = "2026-08-18-packed-stage1";
+const FORM_BUILD = "2026-08-19-fetch-timeout1";
 const dropIcon = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C12 2 5 11.5 5 15.5C5 19.09 8.13 22 12 22C15.87 22 19 19.09 19 15.5C19 11.5 12 2 12 2Z" fill="white"/></svg>`;
 const COMPANY_LOGO = "https://static.wixstatic.com/media/f34ac6_16010ac0fe9c48739c4860abefec3cbb~mv2.png/v1/fill/w_410,h_409,al_c,lg_1,q_85,enc_avif,quality_auto/M%20A%20Products%20INDIA%20Logo.png";
 const COMPANY_NAME = "M A Products INDIA";
