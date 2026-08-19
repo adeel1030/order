@@ -485,7 +485,18 @@ async function orderOpsFetchLite(){
   const res = await fetchWithTimeout(`${ORDEROPS_API_URL}?action=publicLite&secret=${encodeURIComponent(ORDEROPS_SECRET)}&_=${Date.now()}`);
   const json = await res.json();
   if(json.error) throw new Error(json.error);
-  return json.data || {};
+  return json; // {data:{...}, updatedAt}
+}
+// Only the lite keys that actually changed since `since` — a key simply
+// absent from the response means "unchanged". Used by the background
+// catalog refresh below after its first full lite load, so a visitor
+// sitting on the page for a while re-downloads almost nothing on most
+// ticks instead of the same ~4 keys over and over.
+async function orderOpsFetchLiteDelta(since){
+  const res = await fetchWithTimeout(`${ORDEROPS_API_URL}?action=deltaSince&lite=1&since=${since}&secret=${encodeURIComponent(ORDEROPS_SECRET)}&_=${Date.now()}`);
+  const json = await res.json();
+  if(json.error) throw new Error(json.error);
+  return json; // {data:{...partial...}, updatedAt}
 }
 async function orderOpsSave(key, value){
   const res = await fetchWithTimeout(ORDEROPS_API_URL, {
@@ -619,17 +630,23 @@ function bindCatalogFailedScreen(){
     render();
   });
 }
+// The lite fetch's own updatedAt, so refreshLiveCatalogSilent's ticks after
+// the first can ask for a DELTA (only what changed since this) instead of
+// re-fetching the same ~4 keys from scratch every time.
+let lastLiteUpdatedAt = 0;
 async function loadLiveCatalog(){
   const MAX_ATTEMPTS = 3;
   let lastErr = null;
   for(let attempt=1; attempt<=MAX_ATTEMPTS; attempt++){
     try{
-      const data = await orderOpsFetchLite();
+      const json = await orderOpsFetchLite();
+      const data = json.data || {};
       if(data.catalogItems && data.catalogItems.length){
         CATALOG = groupFlatCatalogItems(data.catalogItems);
         preprocessCatalog();
       }
       knownCustomers = data.customers || [];
+      lastLiteUpdatedAt = json.updatedAt || 0;
       catalogLoaded = true;
       catalogLoadFailed = false;
       lastErr = null;
@@ -646,12 +663,17 @@ function isUserTyping(){
   const el = document.activeElement;
   return !!(el && (el.tagName==='INPUT' || el.tagName==='TEXTAREA'));
 }
-// Background refresh (every 5s) — same as loadLiveCatalog but preserves
-// whatever quantities the person has already typed in, keyed by item, so a
-// live catalog update never wipes out an order in progress.
+// Background refresh — same as loadLiveCatalog but preserves whatever
+// quantities the person has already typed in, keyed by item, so a live
+// catalog update never wipes out an order in progress. Uses a DELTA fetch
+// (only what changed since lastLiteUpdatedAt) once loadLiveCatalog has run
+// once — a key simply absent from the response means "unchanged", so
+// anything not present here is deliberately left alone below.
 async function refreshLiveCatalogSilent(){
   try{
-    const data = await orderOpsFetchLite();
+    const json = lastLiteUpdatedAt ? await orderOpsFetchLiteDelta(lastLiteUpdatedAt) : await orderOpsFetchLite();
+    const data = json.data || {};
+    lastLiteUpdatedAt = json.updatedAt || lastLiteUpdatedAt;
     if(data.catalogItems && data.catalogItems.length){
       const preserved = {};
       CATALOG.forEach(cat => cat.items.forEach(it => {
@@ -664,7 +686,7 @@ async function refreshLiveCatalogSilent(){
         if(p){ it.qty = p.qty; it.cases = p.cases; }
       }));
     }
-    knownCustomers = data.customers || [];
+    if(Object.prototype.hasOwnProperty.call(data, 'customers')) knownCustomers = data.customers || [];
     if(!isUserTyping()) render();
   }catch(e){
     console.error('Live refresh hiccup (will retry in 5s)', e);
@@ -1098,7 +1120,7 @@ function getOrderStats(){
   return { lineCount, totalPieces };
 }
 
-const FORM_BUILD = "2026-08-19-lite-catalog-fetch1";
+const FORM_BUILD = "2026-08-19-delta-sync1";
 const dropIcon = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C12 2 5 11.5 5 15.5C5 19.09 8.13 22 12 22C15.87 22 19 19.09 19 15.5C19 11.5 12 2 12 2Z" fill="white"/></svg>`;
 const COMPANY_LOGO = "https://static.wixstatic.com/media/f34ac6_16010ac0fe9c48739c4860abefec3cbb~mv2.png/v1/fill/w_410,h_409,al_c,lg_1,q_85,enc_avif,quality_auto/M%20A%20Products%20INDIA%20Logo.png";
 const COMPANY_NAME = "M A Products INDIA";
@@ -1621,9 +1643,14 @@ document.getElementById('buildFooter').textContent = 'build ' + FORM_BUILD;
 render(); // shows the loading screen (catalogLoaded starts false) — no hardcoded fallback data anymore
 loadLiveCatalog().then(()=>render()); // then swaps in the real order form once live data arrives
 
-// Live sync every 5s — keeps catalog/customers fresh while building an
+// Live sync every 15s — keeps catalog/customers fresh while building an
 // order (skipped while actively typing so it never disrupts a keystroke),
 // and keeps the tracking view's status current without needing a refresh.
+// Was 5s; lengthened since the catalog refresh is now a small delta fetch
+// anyway (see refreshLiveCatalogSilent) and a status update lagging by up
+// to 15s instead of 5s is imperceptible to someone just checking on an
+// order, while it meaningfully cuts total request volume from every
+// visitor sitting on the page.
 setInterval(()=>{
   if(pageMode === 'track'){
     if(trackDirectId && trackDirectState === 'found'){
@@ -1634,7 +1661,7 @@ setInterval(()=>{
   } else if(pageMode === 'order'){
     refreshLiveCatalogSilent();
   }
-}, 5000);
+}, 15000);
 </script>
 </body>
 </html>
