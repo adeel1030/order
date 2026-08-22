@@ -286,6 +286,7 @@
   .btn-wa:active{transform:scale(0.97);}
   .btn-wa:disabled{background:#B8B7A9;box-shadow:none;cursor:not-allowed;}
   .submit-note{font-size:10px;color:var(--ink-soft);text-align:center;margin-top:6px;}
+  .privacy-note{font-size:10.5px;color:var(--ink-soft);text-align:center;margin:14px auto 90px;max-width:480px;line-height:1.5;padding:0 16px;}
   .mono{font-family:'Courier New',monospace;}
 
   /* ---------- Track Order button + tracking mode ---------- */
@@ -408,7 +409,10 @@
   .confirm-location.pending{background:var(--row-alt);color:var(--ink-soft);}
   .confirm-location.success{background:#E4F3E8;color:var(--green-dark);font-weight:700;}
   .confirm-location.error{background:#FCE2DF;color:#8A2E24;}
+  .confirm-location.skipped{background:var(--row-alt);color:var(--ink-soft);}
+  .confirm-location.skipped a{color:var(--primary);font-weight:700;}
   .location-retry-btn{margin-top:6px;background:#8A2E24;color:#fff;border:none;border-radius:9px;padding:8px 16px;font-family:'Inter',sans-serif;font-weight:700;font-size:12px;cursor:pointer;}
+  .location-skip-btn{margin-top:6px;margin-left:6px;background:transparent;color:#8A2E24;border:1.5px solid #8A2E24;border-radius:9px;padding:7px 14px;font-family:'Inter',sans-serif;font-weight:700;font-size:12px;cursor:pointer;}
   /* ---------- LR view dialog (tracking page) ---------- */
   .lr-view-overlay{
     position:fixed;inset:0;background:rgba(20,26,16,0.65);display:flex;align-items:center;justify-content:center;
@@ -498,16 +502,11 @@ async function orderOpsFetchLiteDelta(since){
   if(json.error) throw new Error(json.error);
   return json; // {data:{...partial...}, updatedAt}
 }
-async function orderOpsSave(key, value){
-  const res = await fetchWithTimeout(ORDEROPS_API_URL, {
-    method:'POST',
-    headers:{'Content-Type':'text/plain;charset=utf-8'},
-    body: JSON.stringify({ secret:ORDEROPS_SECRET, action:'save', key, value })
-  });
-  const json = await res.json();
-  if(json.error) throw new Error(json.error);
-  return json;
-}
+// NOTE: the old orderOpsSave(key, value) whole-array "save" helper was
+// removed here (2026-08-21 audit) — the backend no longer accepts public
+// "save" calls at all (see isPublicWritableKey_ in order-ops-backend.gs),
+// so it no longer worked and was only kept as unused, misleading dead code.
+// Order submission now goes exclusively through orderOpsSubmitOrder above.
 function uid(){ return (crypto.randomUUID ? crypto.randomUUID() : (Date.now()+'-'+Math.random().toString(36).slice(2))); }
 // Must match the main app's itemKey() convention exactly (name + '__' + size, verbatim).
 function itemKeyFor(name, size){ return name + '__' + size; }
@@ -772,6 +771,28 @@ async function orderOpsAppend(key, item){
   const json = await res.json();
   if(json.error) throw new Error(json.error);
   return json;
+}
+// SECURITY FIX (2026-08-21 audit, findings #1/#6/#11/#15): order placement
+// used to fetch the ENTIRE customers array and today's ENTIRE orders array,
+// mutate them right here in the browser, then blindly "save" each whole
+// array back -- a tampered request (or just two visitors submitting at the
+// same moment) could wipe or corrupt real data, and a customer could be
+// silently matched by name alone with no identity check. Now a single
+// atomic, server-validated call: only these specific fields are ever sent,
+// the server does the customer match (by phone, never name alone) and the
+// day-partition append itself, under its own lock.
+async function orderOpsSubmitOrder(orderId, customer, items, orderLat, orderLng){
+  const res = await fetchWithTimeout(ORDEROPS_API_URL, {
+    method:'POST',
+    headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body: JSON.stringify({
+      secret:ORDEROPS_SECRET, action:'submitPublicOrder',
+      orderId, customer, items, orderLat: orderLat==null?null:orderLat, orderLng: orderLng==null?null:orderLng
+    })
+  });
+  const json = await res.json();
+  if(json.error) throw new Error(json.error);
+  return json; // {ok, orderId, customerId, updatedAt}
 }
 async function appendLogEntry(entityPrefix, entry){
   // Atomic server-side append — safe even if many visitors hit the site in
@@ -1049,7 +1070,7 @@ function renderTrackMode(){
     } else {
       body = `<div class="track-state-card"><div class="track-state-icon">⚠️</div><div class="track-state-title">Something went wrong</div><div class="track-state-desc">Could not load your order right now. Please try again.</div></div>`;
     }
-    app.innerHTML = `${trackCompanyHeaderHtml()}<button type="button" class="track-back-btn" onclick="closeTrackMode()">‹ Back to order form</button>${body}`;
+    app.innerHTML = `${trackCompanyHeaderHtml()}<button type="button" class="track-back-btn" onclick="closeTrackMode()">‹ Back to order form</button>${body}<div class="privacy-note" style="margin-bottom:24px;">For order tracking, delivery coordination and fraud/spam prevention, this page records basic visit information (approximate location, IP address, device/browser type) when it loads. This information is used only by M.A. Products (India) and is never sold or shared with third parties.</div>`;
     return;
   }
   let resultsHtml = '';
@@ -1074,6 +1095,7 @@ function renderTrackMode(){
       </div>
     </div>
     ${resultsHtml}
+    <div class="privacy-note" style="margin-bottom:24px;">For order tracking, delivery coordination and fraud/spam prevention, this page records basic visit information (approximate location, IP address, device/browser type) when it loads. This information is used only by M.A. Products (India) and is never sold or shared with third parties.</div>
   `;
 }
 
@@ -1120,7 +1142,7 @@ function getOrderStats(){
   return { lineCount, totalPieces };
 }
 
-const FORM_BUILD = "2026-08-19-qty-cap1";
+const FORM_BUILD = "2026-08-21-secure-submit1";
 // Per-item order cap (2026-08-21): a single line item can't exceed 50
 // cases worth of pieces (qty loose-pieces + cases*caseSize combined, not
 // 50 cases on top of separately-unlimited loose pieces). Items with no
@@ -1257,6 +1279,8 @@ function render(){
         <button class="btn-reset" onclick="resetAll()">Reset order</button>
       </div>
     </div>
+
+    <div class="privacy-note">For order tracking, delivery coordination and fraud/spam prevention, this page records basic visit information (approximate location, IP address, device/browser type) when it loads. This information is used only by M.A. Products (India) and is never sold or shared with third parties.</div>
 
     <div class="sticky-bar">
       <div class="sticky-inner">
@@ -1414,6 +1438,7 @@ function resetAll(){
   searchQuery = '';
   orderLocation = null;
   orderLocationStatus = 'idle';
+  orderLocationSkipped = false;
   render();
 }
 
@@ -1422,18 +1447,6 @@ function resetAll(){
 // pending order tagged "Website" so the admin sees it needs accepting.
 async function submitToOrderOps(preGeneratedId){
   try{
-    const data = await orderOpsFetchAll();
-    const customers = data.customers || [];
-
-    let cust = customers.find(c => (c.name||'').trim().toLowerCase() === custName.trim().toLowerCase());
-    if(!cust){
-      cust = { id: uid(), name: custName.trim(), phone: custPhone.trim(), city: custCity.trim(), address: custAddress.trim(), gstin: custGstin.trim().toUpperCase(), addedBy:'Website', addedByUsername:'website', addedAt: Date.now() };
-      customers.push(cust);
-    } else {
-      if(!cust.phone && custPhone.trim()) cust.phone = custPhone.trim();
-      if(!cust.city && custCity.trim()) cust.city = custCity.trim();
-    }
-
     const items = [];
     CATALOG.forEach(cat => {
       cat.items.filter(it => totalPcs(it) > 0).forEach(it => {
@@ -1441,38 +1454,28 @@ async function submitToOrderOps(preGeneratedId){
         items.push({ key: it.key, name: it.name, size: it.size, qty: t });
       });
     });
-    if(items.length===0) return;
+    if(items.length===0) return null;
 
-    // Stock is only reserved once the owner accepts the order in Order Ops —
-    // this just submits the request, same as an order placed inside the app.
-    const nowTs = Date.now();
-    const dOrderNum = new Date(nowTs);
-    const order = {
-      id: preGeneratedId || uid(),
-      orderNumber: `${String(dOrderNum.getMonth()+1).padStart(2,'0')}${String(dOrderNum.getDate()).padStart(2,'0')}${dOrderNum.getFullYear()}-WEB`,
-      customerId: cust.id, customerName: cust.name, customerCity: cust.city || '',
-      customerPhone: cust.phone || '', customerAddress: cust.address || '', customerGstin: cust.gstin || '',
-      items, status:'pending', fillingStatus:'pending', packagingStatus:'pending', stockDeducted:false, processedAt:null,
-      createdBy:'Website form', createdByUsername:'website', createdByRole:'website',
-      source:'website', createdAt: nowTs,
-      orderLat: orderLocation ? orderLocation.lat : null,
-      orderLng: orderLocation ? orderLocation.lng : null,
+    // SECURITY FIX (2026-08-21 audit, findings #1/#6/#11/#15): this used to
+    // fetch the entire customers + today's orders arrays, match/mutate them
+    // right here in the browser, then blindly "save" both whole arrays back.
+    // Now a single atomic, server-validated call — see orderOpsSubmitOrder's
+    // comment. The server does the customer match (by phone, not name) and
+    // the day-partition append itself, under its own lock, and figures out
+    // today's day-key server-side too (so a clock-skewed browser can't write
+    // into the wrong day-partition).
+    const customer = {
+      name: custName.trim(), phone: custPhone.trim(), city: custCity.trim(),
+      address: custAddress.trim(), gstin: custGstin.trim().toUpperCase()
     };
+    const orderLat = orderLocation ? orderLocation.lat : null;
+    const orderLng = orderLocation ? orderLocation.lng : null;
 
-    // Orders are stored one row PER CALENDAR DAY in Order Ops (e.g.
-    // "orders_2026-08-10") so no single cell grows without bound — this
-    // has to write into today's day-chunk alongside whatever else is
-    // already in it, not overwrite the whole orders history.
-    const d = new Date(order.createdAt);
+    const result = await orderOpsSubmitOrder(preGeneratedId, customer, items, orderLat, orderLng);
+    if(!result || !result.ok) return null;
+    const d = new Date();
     const dayKey = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
-    const todaysOrders = data['orders_'+dayKey] || [];
-    todaysOrders.push(order);
-
-    await Promise.all([
-      orderOpsSave('customers', customers),
-      orderOpsSave('orders_'+dayKey, todaysOrders)
-    ]);
-    return { id: order.id, dayKey };
+    return { id: result.orderId, dayKey };
   }catch(e){
     console.error('Order Ops submission failed', e);
     // Non-fatal: the WhatsApp message still goes out even if this fails.
@@ -1486,6 +1489,16 @@ async function submitToOrderOps(preGeneratedId){
 // (a delayed window.open gets blocked as a popup by the browser).
 let orderLocation = null; // {lat, lng} once resolved
 let orderLocationStatus = 'idle'; // 'idle' | 'pending' | 'success' | 'error'
+// MEDIUM FIX (2026-08-21 audit, finding #23): GPS used to be flatly
+// MANDATORY -- the submit button stayed permanently disabled for anyone
+// who declined the browser's location permission, had it blocked by
+// policy, or was on a device/browser without geolocation at all, with no
+// way to still place an order. Precise location is genuinely useful for
+// delivery coordination, but it isn't worth blocking a wholesale order
+// entirely over -- the backend already treats orderLat/orderLng as
+// optional (see handlePublicOrderSubmission_, which happily accepts
+// null). This flag lets someone explicitly continue without sharing it.
+let orderLocationSkipped = false;
 function requestOrderLocation(){
   orderLocationStatus = 'pending';
   updateLocationStatusUI();
@@ -1509,18 +1522,23 @@ function requestOrderLocation(){
   );
 }
 function locationStatusHtml(){
+  if(orderLocationSkipped) return `<div class="confirm-location skipped">📍 Submitting without location. <a href="#" id="undoSkipLocationLink">Share it instead?</a></div>`;
   if(orderLocationStatus==='pending') return `<div class="confirm-location pending">📍 Getting your location…</div>`;
   if(orderLocationStatus==='success') return `<div class="confirm-location success">📍 Location confirmed ✓</div>`;
-  if(orderLocationStatus==='error') return `<div class="confirm-location error">⚠️ Location is required to submit an order.<br/><button type="button" id="retryLocationBtn" class="location-retry-btn">Enable location &amp; retry</button></div>`;
+  if(orderLocationStatus==='error') return `<div class="confirm-location error">⚠️ Couldn't get your location.<br/><button type="button" id="retryLocationBtn" class="location-retry-btn">Try again</button> <button type="button" id="skipLocationBtn" class="location-skip-btn">Continue without location</button></div>`;
   return '';
 }
 function updateLocationStatusUI(){
   const el = document.getElementById('orderLocationStatus');
   if(el) el.innerHTML = locationStatusHtml();
   const retryBtn = document.getElementById('retryLocationBtn');
-  if(retryBtn) retryBtn.addEventListener('click', requestOrderLocation);
+  if(retryBtn) retryBtn.addEventListener('click', ()=>{ orderLocationSkipped = false; requestOrderLocation(); });
+  const skipBtn = document.getElementById('skipLocationBtn');
+  if(skipBtn) skipBtn.addEventListener('click', ()=>{ orderLocationSkipped = true; orderLocation = null; updateLocationStatusUI(); });
+  const undoLink = document.getElementById('undoSkipLocationLink');
+  if(undoLink) undoLink.addEventListener('click', (e)=>{ e.preventDefault(); orderLocationSkipped = false; requestOrderLocation(); });
   const submitBtn = document.getElementById('submitOrderFinalBtn');
-  if(submitBtn) submitBtn.disabled = orderLocationStatus !== 'success';
+  if(submitBtn) submitBtn.disabled = orderLocationStatus !== 'success' && !orderLocationSkipped;
 }
 
 // Step 1: validate, then show the "review before sending" dialog.
@@ -1575,12 +1593,13 @@ function openOrderConfirm(){
   overlay.addEventListener('click', (e)=>{ if(e.target===overlay) closeOrderConfirm(); });
   document.getElementById('editOrderBtn').addEventListener('click', closeOrderConfirm);
   document.getElementById('submitOrderFinalBtn').addEventListener('click', async ()=>{
-    if(orderLocationStatus!=='success'){ showAlert('Please allow location access — it\'s required to submit an order.'); return; }
+    if(orderLocationStatus!=='success' && !orderLocationSkipped){ showAlert('Please allow location access, or choose "Continue without location".'); return; }
     const btn = document.getElementById('submitOrderFinalBtn');
     btn.disabled = true; btn.textContent = 'Submitting…';
     const trackLink = await finalizeSubmitOrder();
     showOrderSuccess(trackLink);
   });
+  orderLocationSkipped = false; // each time this sheet opens, attempt a fresh capture rather than carrying over a stale skip choice from a previous open
   requestOrderLocation(); // start immediately — resolved well before the person finishes reviewing
 }
 function showOrderSuccess(trackLink){
