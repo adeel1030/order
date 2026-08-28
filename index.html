@@ -449,18 +449,82 @@
 
 <script>
 /* =========================================================================
-   Order Ops backend link — same Google Apps Script the main Order Ops app
-   uses. This lets an order placed here land directly in the admin's Orders
-   tab, tagged as "submitted by website", alongside a normal WhatsApp send.
+   FIRESTORE (Task #55 rewrite) -- catalog fetch + order submission
+
+   Replaces orderOpsFetchLite/orderOpsFetchLiteDelta/orderOpsSubmitOrder
+   (the old Apps Script HTTP backend, order-ops-backend.gs) with two new
+   Cloud Functions HTTPS endpoints, per the contract in
+   ORDER_OPS_FIRESTORE_REWRITE_STATUS.md / firestore_client_design.md:
+
+     GET  PUBLIC_GET_CATALOG_URL?secret=...
+          -> { data: { catalogItems, customers, readyStock, transports },
+               updatedAt }
+          Same shape doGet's "publicLite" action returns today (see
+          PUBLIC_LITE_KEYS in order-ops-backend.gs) -- this form only reads
+          data.catalogItems and data.customers, but the other two keys are
+          assumed present for parity with the old response and left
+          untouched if so.
+
+     POST PUBLIC_SUBMIT_ORDER_URL
+          body: { secret, order: { id, customer:{name,phone,city,address,
+                  gstin}, items:[{key,name,size,qty}], orderLat, orderLng,
+                  source, createdAt } }
+          -> { ok:true, orderId } | { ok:false, error }
+          ASSUMED SHAPE -- see buildPublicOrderPayload() below. The old
+          backend took orderId/customer/items/orderLat/orderLng as flat
+          POST-body fields and built its OWN order doc server-side
+          (matching/creating the customer by phone, computing orderNumber/
+          status/day-partition -- see handlePublicOrderSubmission_). This
+          contract instead has the client hand over one `order` object and
+          expects the function to do that same match/validate/persist work.
+          The exact field names above are this file's best-effort mapping
+          of "the order object shape this file already builds" onto that
+          new contract -- THE PARALLEL AGENT BUILDING functions/index.js
+          MUST use this same shape (or tell us to change it). `id` is
+          generated CLIENT-SIDE via uid() (same helper used for the
+          tracking-link id today) specifically so a network retry of one
+          submit re-sends the SAME id instead of risking two orders for one
+          customer action -- the function should treat `order.id` as the
+          Firestore doc id and no-op/upsert idempotently on a repeat.
+
+   RESOLVED same day (was flagged here as out of scope, then closed in a
+   reconciliation pass once the gap was actually noticed): order tracking
+   (loadDirectTrackOrder / searchOrdersByPhone) now calls the
+   publicTrackOrder Cloud Function -- Firestore's flat orders/{id}
+   collection actually made this SIMPLER than the old day-partitioned Sheets
+   scan (a direct doc read by id, and a direct customerPhone query). See
+   publicTrackOrder's own header comment in functions/index.js.
+
+   STILL genuinely out of scope for this pass (tracked in
+   ORDER_OPS_FIRESTORE_REWRITE_STATUS.md, not silently dropped):
+   - Silent visitor/tracking-view logging (runVisitorLogging / appendLogEntry,
+     via orderOpsAppend below) still calls the OLD Apps Script backend,
+     unchanged. This is pure analytics (who viewed what, from where) with no
+     effect on order data correctness -- lower stakes than order-submit/
+     tracking, deliberately left for a follow-up pass rather than adding a
+     third public Cloud Function under today's time pressure. Once the
+     Apps Script backend is fully decommissioned this logging will silently
+     stop working; replace with Firestore writes (siteVisitLogs/
+     trackingViewLogs collections already exist in the data model) before
+     then.
    ========================================================================= */
 const ORDEROPS_API_URL = "https://script.google.com/macros/s/AKfycbzGTJDC1jXEb15S2QQl_G5e-RBlRhiEfsC9rJwaXYiJTfB5mUJ8BX6aOQFGqTUKWIht/exec";
-// A separate, restricted secret — NOT the same one order-ops.html uses.
-// This page is public (no login), so this secret is necessarily visible to
-// anyone who views the page source — the backend only grants it read
-// access to customers/catalog/ready-stock/orders, and write access to
-// customers/orders only. It can never see or touch staff accounts,
-// passwords, expenses, or anything else internal.
+// Still used for the old-backend calls listed above (tracking + visitor
+// logging) AND reused as-is for the two new Cloud Functions calls below --
+// same public, restricted secret either way (baked into client JS, visible
+// via view-source; this is the accepted trust model for this public page).
 const ORDEROPS_SECRET = "MOI-PublicForm-9fK2mQ7xR4";
+// Deployed 2026-08-28. NOTE: these are 2nd-gen Cloud Functions -- each one
+// gets its OWN unique Cloud Run URL (no shared "<region>-<project>
+// .cloudfunctions.net/<name>" base path the way 1st-gen functions work),
+// so there are three separate constants here instead of one shared
+// CLOUD_FUNCTIONS_BASE_URL + path. If these are ever redeployed under a
+// different project/region, or Cloud Run's URL scheme changes, re-copy the
+// "Trigger URL" shown on each function's row in Firebase console -> Build
+// -> Functions and update the matching constant below.
+const PUBLIC_GET_CATALOG_URL = "https://publicgetcatalog-tldch7755a-em.a.run.app";
+const PUBLIC_SUBMIT_ORDER_URL = "https://publicsubmitorder-tldch7755a-em.a.run.app";
+const PUBLIC_TRACK_ORDER_URL = "https://publictrackorder-tldch7755a-em.a.run.app";
 // A raw fetch() has NO timeout of its own — on a slow/unreliable connection
 // (mobile data especially), a request that never gets a response just hangs
 // forever with no error, which looks exactly like "stuck loading forever,
@@ -475,38 +539,57 @@ function fetchWithTimeout(url, options, timeoutMs){
     .finally(()=>clearTimeout(timer));
 }
 
+// Still the old backend — order tracking hasn't been migrated (see the
+// block comment above).
 async function orderOpsFetchAll(){
   const res = await fetchWithTimeout(`${ORDEROPS_API_URL}?secret=${encodeURIComponent(ORDEROPS_SECRET)}&_=${Date.now()}`);
   const json = await res.json();
   if(json.error) throw new Error(json.error);
   return json.data || {};
 }
-// A much smaller fetch than orderOpsFetchAll — only customers/catalogItems/
-// readyStock/transports, never any order history. Use this for anything
-// that only needs the catalog/customer list (e.g. the background refresh
-// below), instead of re-downloading the entire order history on every poll.
-async function orderOpsFetchLite(){
-  const res = await fetchWithTimeout(`${ORDEROPS_API_URL}?action=publicLite&secret=${encodeURIComponent(ORDEROPS_SECRET)}&_=${Date.now()}`);
+// Firestore-backed catalog fetch — replaces orderOpsFetchLite AND
+// orderOpsFetchLiteDelta (see loadLiveCatalog/refreshLiveCatalogSilent
+// below: the delta-since mechanism is deliberately dropped in favor of a
+// flat periodic re-fetch on this same call, since catalog data changes
+// rarely and simplicity matters more than bandwidth for a public form).
+async function fetchPublicCatalog(){
+  const res = await fetchWithTimeout(`${PUBLIC_GET_CATALOG_URL}?secret=${encodeURIComponent(ORDEROPS_SECRET)}&_=${Date.now()}`);
   const json = await res.json();
   if(json.error) throw new Error(json.error);
-  return json; // {data:{...}, updatedAt}
+  return json; // {data:{catalogItems, customers, readyStock, transports}, updatedAt}
 }
-// Only the lite keys that actually changed since `since` — a key simply
-// absent from the response means "unchanged". Used by the background
-// catalog refresh below after its first full lite load, so a visitor
-// sitting on the page for a while re-downloads almost nothing on most
-// ticks instead of the same ~4 keys over and over.
-async function orderOpsFetchLiteDelta(since){
-  const res = await fetchWithTimeout(`${ORDEROPS_API_URL}?action=deltaSince&lite=1&since=${since}&secret=${encodeURIComponent(ORDEROPS_SECRET)}&_=${Date.now()}`);
+// Firestore-backed order submission — replaces orderOpsSubmitOrder. Sends
+// one pre-built `order` object (see buildPublicOrderPayload) rather than
+// flat orderId/customer/items/orderLat/orderLng fields — see the contract
+// comment at the top of this block for why, and the caveat that this
+// exact shape is this file's assumption, not a confirmed-shared contract.
+async function submitPublicOrder(orderPayload){
+  const res = await fetchWithTimeout(`${PUBLIC_SUBMIT_ORDER_URL}`, {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ secret: ORDEROPS_SECRET, order: orderPayload })
+  });
+  const json = await res.json();
+  if(json.ok === false) throw new Error(json.error || 'Order submission failed');
+  return json; // {ok:true, orderId}
+}
+// ADDED (reconciliation pass, same day): publicTrackOrder replaces the old
+// orderOpsFetchAll()-based tracking this file originally shipped with (see
+// the now-resolved "EXPLICITLY OUT OF SCOPE" block comment above — the
+// Cloud Function exists now, this file was updated to actually call it).
+// mode is 'byId' (?orderId=...) or 'byPhone' (?phone=<10 digits>).
+async function fetchPublicTrackOrder(mode, param){
+  const qs = mode==='byId' ? `orderId=${encodeURIComponent(param)}` : `phone=${encodeURIComponent(param)}`;
+  const res = await fetchWithTimeout(`${PUBLIC_TRACK_ORDER_URL}?secret=${encodeURIComponent(ORDEROPS_SECRET)}&mode=${mode}&${qs}&_=${Date.now()}`);
   const json = await res.json();
   if(json.error) throw new Error(json.error);
-  return json; // {data:{...partial...}, updatedAt}
+  return json; // {data:{order,readyStock}} for byId, {data:{orders}} for byPhone
 }
 // NOTE: the old orderOpsSave(key, value) whole-array "save" helper was
 // removed here (2026-08-21 audit) — the backend no longer accepts public
 // "save" calls at all (see isPublicWritableKey_ in order-ops-backend.gs),
 // so it no longer worked and was only kept as unused, misleading dead code.
-// Order submission now goes exclusively through orderOpsSubmitOrder above.
+// Order submission now goes exclusively through submitPublicOrder above.
 function uid(){ return (crypto.randomUUID ? crypto.randomUUID() : (Date.now()+'-'+Math.random().toString(36).slice(2))); }
 // Must match the main app's itemKey() convention exactly (name + '__' + size, verbatim).
 function itemKeyFor(name, size){ return name + '__' + size; }
@@ -629,23 +712,24 @@ function bindCatalogFailedScreen(){
     render();
   });
 }
-// The lite fetch's own updatedAt, so refreshLiveCatalogSilent's ticks after
-// the first can ask for a DELTA (only what changed since this) instead of
-// re-fetching the same ~4 keys from scratch every time.
-let lastLiteUpdatedAt = 0;
+// FIRESTORE (Task #55): the old delta-since mechanism (lastLiteUpdatedAt +
+// orderOpsFetchLiteDelta) is deliberately NOT ported here — publicGetCatalog
+// has no delta variant in its contract, and catalog data changes rarely
+// enough that a flat periodic re-fetch (see refreshLiveCatalogSilent below)
+// is simpler and correctness-first, at the cost of a slightly bigger poll
+// payload every 15s. See the CLOUD_FUNCTIONS_BASE_URL comment block above.
 async function loadLiveCatalog(){
   const MAX_ATTEMPTS = 3;
   let lastErr = null;
   for(let attempt=1; attempt<=MAX_ATTEMPTS; attempt++){
     try{
-      const json = await orderOpsFetchLite();
+      const json = await fetchPublicCatalog();
       const data = json.data || {};
       if(data.catalogItems && data.catalogItems.length){
         CATALOG = groupFlatCatalogItems(data.catalogItems);
         preprocessCatalog();
       }
       knownCustomers = data.customers || [];
-      lastLiteUpdatedAt = json.updatedAt || 0;
       catalogLoaded = true;
       catalogLoadFailed = false;
       lastErr = null;
@@ -664,15 +748,13 @@ function isUserTyping(){
 }
 // Background refresh — same as loadLiveCatalog but preserves whatever
 // quantities the person has already typed in, keyed by item, so a live
-// catalog update never wipes out an order in progress. Uses a DELTA fetch
-// (only what changed since lastLiteUpdatedAt) once loadLiveCatalog has run
-// once — a key simply absent from the response means "unchanged", so
-// anything not present here is deliberately left alone below.
+// catalog update never wipes out an order in progress. A flat re-fetch of
+// the full (small) publicGetCatalog response every tick — see the
+// no-delta-variant note on loadLiveCatalog above.
 async function refreshLiveCatalogSilent(){
   try{
-    const json = lastLiteUpdatedAt ? await orderOpsFetchLiteDelta(lastLiteUpdatedAt) : await orderOpsFetchLite();
+    const json = await fetchPublicCatalog();
     const data = json.data || {};
-    lastLiteUpdatedAt = json.updatedAt || lastLiteUpdatedAt;
     if(data.catalogItems && data.catalogItems.length){
       const preserved = {};
       CATALOG.forEach(cat => cat.items.forEach(it => {
@@ -762,6 +844,9 @@ function deviceString(){
   else if(/Safari\//i.test(ua) && !/Chrome/i.test(ua)) browser = 'Safari';
   return `${os} · ${browser}`;
 }
+// Still the old backend — visitor/tracking-view logging hasn't been
+// migrated (see the CLOUD_FUNCTIONS_BASE_URL comment block near the top of
+// this file).
 async function orderOpsAppend(key, item){
   const res = await fetchWithTimeout(ORDEROPS_API_URL, {
     method:'POST',
@@ -772,28 +857,12 @@ async function orderOpsAppend(key, item){
   if(json.error) throw new Error(json.error);
   return json;
 }
-// SECURITY FIX (2026-08-21 audit, findings #1/#6/#11/#15): order placement
-// used to fetch the ENTIRE customers array and today's ENTIRE orders array,
-// mutate them right here in the browser, then blindly "save" each whole
-// array back -- a tampered request (or just two visitors submitting at the
-// same moment) could wipe or corrupt real data, and a customer could be
-// silently matched by name alone with no identity check. Now a single
-// atomic, server-validated call: only these specific fields are ever sent,
-// the server does the customer match (by phone, never name alone) and the
-// day-partition append itself, under its own lock.
-async function orderOpsSubmitOrder(orderId, customer, items, orderLat, orderLng){
-  const res = await fetchWithTimeout(ORDEROPS_API_URL, {
-    method:'POST',
-    headers:{'Content-Type':'text/plain;charset=utf-8'},
-    body: JSON.stringify({
-      secret:ORDEROPS_SECRET, action:'submitPublicOrder',
-      orderId, customer, items, orderLat: orderLat==null?null:orderLat, orderLng: orderLng==null?null:orderLng
-    })
-  });
-  const json = await res.json();
-  if(json.error) throw new Error(json.error);
-  return json; // {ok, orderId, customerId, updatedAt}
-}
+// FIRESTORE (Task #55): the old orderOpsSubmitOrder(orderId, customer,
+// items, orderLat, orderLng) helper — which POSTed action:'submitPublicOrder'
+// straight to the old Apps Script backend — was removed here. Order
+// submission now goes exclusively through submitPublicOrder /
+// buildPublicOrderPayload (see the CLOUD_FUNCTIONS_BASE_URL comment block
+// near the top of this file), called from submitToOrderOps below.
 async function appendLogEntry(entityPrefix, entry){
   // Atomic server-side append — safe even if many visitors hit the site in
   // the same moment (see appendToArray_ on the backend for why this matters
@@ -832,27 +901,26 @@ function closeTrackMode(){
   render();
 }
 
+// FIXED (reconciliation pass, same day): now calls publicTrackOrder
+// (Cloud Function) instead of the old orderOpsFetchAll(). trackDirectDay
+// is no longer needed for the lookup itself -- Firestore's orders/{id} is
+// a flat collection, not day-partitioned like the old Sheets rows -- but
+// the ?id=...&d=... URL format is left unchanged so any tracking link
+// already sent out (old or new) still parses fine; `d` is simply unused
+// now. The "live customer details" merge that used to happen client-side
+// against a full customers array now happens server-side inside
+// publicTrackOrder itself (see its own comment) -- the response's `order`
+// already has the freshest customer fields, nothing more to merge here.
 async function loadDirectTrackOrder(silent){
   if(!silent){ trackDirectState = 'loading'; render(); }
   try{
-    const data = await orderOpsFetchAll();
-    const dayOrders = data['orders_' + trackDirectDay] || [];
-    const order = dayOrders.find(o => o.id === trackDirectId);
+    const { data } = await fetchPublicTrackOrder('byId', trackDirectId);
+    const order = data.order;
     if(!order){ trackDirectState = 'not_found'; render(); return; }
     if(order.status === 'processed' && order.processedAt && (Date.now() - order.processedAt) > TRACK_EXPIRY_MS){
       trackDirectState = 'expired'; render(); return;
     }
-    // Party details are shown LIVE from the customer record (not the frozen
-    // snapshot on the order) — if the office fixes a wrong city/phone/etc.
-    // afterwards, this page reflects it immediately without a new link.
-    const liveCust = order.customerId ? (data.customers||[]).find(c=>c.id===order.customerId) : null;
-    trackDirectOrder = liveCust ? {
-      ...order,
-      customerCity: liveCust.city || order.customerCity,
-      customerPhone: liveCust.phone || order.customerPhone,
-      customerAddress: liveCust.address || order.customerAddress,
-      customerGstin: liveCust.gstin || order.customerGstin,
-    } : order;
+    trackDirectOrder = order;
     trackReadyStock = data.readyStock || {}; // used to derive each item's live Ready/Under Packing status
     trackDirectState = 'found';
   }catch(e){
@@ -862,23 +930,19 @@ async function loadDirectTrackOrder(silent){
   render();
 }
 
+// FIXED (reconciliation pass, same day): now calls publicTrackOrder in
+// 'byPhone' mode -- Firestore orders carry customerPhone directly on every
+// doc (both staff-created and public-form orders, confirmed by reading
+// order-ops-firestore.html's own order-creation code), so this is now a
+// single direct query instead of the old two-step "match customer ids,
+// then scan every day-partition" approach.
 async function searchOrdersByPhone(silent){
   const phone = trackPhone.trim();
   if(!/^\d{10}$/.test(phone)){ if(!silent) showAlert('Enter a valid 10-digit WhatsApp number.'); return; }
   if(!silent){ trackSearching = true; render(); }
   try{
-    const data = await orderOpsFetchAll();
-    const customers = data.customers || [];
-    const matchIds = new Set(customers.filter(c => (c.phone||'').trim() === phone).map(c=>c.id));
-    const results = [];
-    Object.keys(data).forEach(k=>{
-      if(k.indexOf('orders_')===0 && Array.isArray(data[k])){
-        const dayKey = k.substring('orders_'.length);
-        data[k].forEach(o=>{ if(matchIds.has(o.customerId)) results.push({...o, _dayKey: dayKey}); });
-      }
-    });
-    results.sort((a,b)=>b.createdAt-a.createdAt);
-    trackResults = results;
+    const { data } = await fetchPublicTrackOrder('byPhone', phone);
+    trackResults = data.orders || [];
   }catch(e){
     console.error(e);
     if(!silent) trackResults = 'error';
@@ -1142,7 +1206,7 @@ function getOrderStats(){
   return { lineCount, totalPieces };
 }
 
-const FORM_BUILD = "2026-08-21-secure-submit1";
+const FORM_BUILD = "2026-08-28-firestore-preview3"; // Task #55 test build -- talks to the now-deployed Cloud Functions (publicGetCatalog/publicSubmitOrder/publicTrackOrder, live Cloud Run URLs wired in above) instead of the old Apps Script backend; still NOT deployed to order.maproductsindia.com itself -- this file has not been smoke-tested against the live functions yet (see ORDER_OPS_FIRESTORE_REWRITE_STATUS.md's continuation checklist). Only silent visitor/tracking-view LOGGING still calls the old backend -- see the top-of-file comment block. Mirrors how order-ops-firestore.html's APP_BUILD was bumped for its own Task #54 test build.
 // Per-item order cap (2026-08-21): a single line item can't exceed 50
 // cases worth of pieces (qty loose-pieces + cases*caseSize combined, not
 // 50 cases on top of separately-unlimited loose pieces). Items with no
@@ -1442,42 +1506,79 @@ function resetAll(){
   render();
 }
 
-// Submits this order straight into Order Ops (same backend the main app
-// uses) — creates/matches the customer, deducts ready stock, and adds a
-// pending order tagged "Website" so the admin sees it needs accepting.
+// Pure: builds the flat items[] array (key/name/size/qty) from a CATALOG-
+// shaped array, skipping any line with zero total pieces. Extracted as its
+// own function (out of submitToOrderOps) purely so it's unit-testable
+// without a DOM/live-catalog fixture — see
+// test_order_form_firestore_client.js.
+function buildOrderItemsFromCatalog(catalog){
+  const items = [];
+  (catalog||[]).forEach(cat => {
+    (cat.items||[]).filter(it => totalPcs(it) > 0).forEach(it => {
+      items.push({ key: it.key, name: it.name, size: it.size, qty: totalPcs(it) });
+    });
+  });
+  return items;
+}
+// Pure: builds the exact `order` object sent to publicSubmitOrder as
+// {secret, order:...} — see the CLOUD_FUNCTIONS_BASE_URL comment block
+// near the top of this file for the full contract (and the caveat that
+// this shape is this file's own assumption, to be confirmed against the
+// real Cloud Function). `orderId` is generated client-side by the caller
+// (uid(), same helper the tracking link already used) — never by the
+// server — specifically so a network retry of one submit reuses the same
+// id instead of risking two orders for one customer action.
+function buildPublicOrderPayload(orderId, customerFields, items, orderLat, orderLng){
+  return {
+    id: orderId,
+    customer: {
+      name: String((customerFields&&customerFields.name)||'').trim(),
+      phone: String((customerFields&&customerFields.phone)||'').trim(),
+      city: String((customerFields&&customerFields.city)||'').trim(),
+      address: String((customerFields&&customerFields.address)||'').trim(),
+      gstin: String((customerFields&&customerFields.gstin)||'').trim().toUpperCase(),
+    },
+    items: items||[],
+    orderLat: orderLat==null ? null : orderLat,
+    orderLng: orderLng==null ? null : orderLng,
+    source: 'website',
+    createdAt: Date.now(),
+  };
+}
+
+// Submits this order straight into Firestore (via the publicSubmitOrder
+// Cloud Function) — creates/matches the customer, deducts ready stock, and
+// adds a pending order tagged "Website" so the admin sees it needs
+// accepting. See buildPublicOrderPayload/submitPublicOrder above.
 async function submitToOrderOps(preGeneratedId){
   try{
-    const items = [];
-    CATALOG.forEach(cat => {
-      cat.items.filter(it => totalPcs(it) > 0).forEach(it => {
-        const t = totalPcs(it);
-        items.push({ key: it.key, name: it.name, size: it.size, qty: t });
-      });
-    });
+    const items = buildOrderItemsFromCatalog(CATALOG);
     if(items.length===0) return null;
 
-    // SECURITY FIX (2026-08-21 audit, findings #1/#6/#11/#15): this used to
-    // fetch the entire customers + today's orders arrays, match/mutate them
-    // right here in the browser, then blindly "save" both whole arrays back.
-    // Now a single atomic, server-validated call — see orderOpsSubmitOrder's
-    // comment. The server does the customer match (by phone, not name) and
-    // the day-partition append itself, under its own lock, and figures out
-    // today's day-key server-side too (so a clock-skewed browser can't write
-    // into the wrong day-partition).
+    // FIRESTORE (Task #55): this used to fetch the entire customers + today's
+    // orders arrays, match/mutate them right here in the browser, then
+    // blindly "save" both whole arrays back (see the 2026-08-21 audit
+    // history for order-form.html) — that hole was already closed by moving
+    // to a single atomic, server-validated call (orderOpsSubmitOrder). This
+    // pass just moves that same server-validated call onto Firestore
+    // (submitPublicOrder) — the client still never matches/writes a
+    // customer record directly, only sends the raw fields for the server to
+    // validate and match by phone.
     const customer = {
       name: custName.trim(), phone: custPhone.trim(), city: custCity.trim(),
       address: custAddress.trim(), gstin: custGstin.trim().toUpperCase()
     };
     const orderLat = orderLocation ? orderLocation.lat : null;
     const orderLng = orderLocation ? orderLocation.lng : null;
+    const payload = buildPublicOrderPayload(preGeneratedId, customer, items, orderLat, orderLng);
 
-    const result = await orderOpsSubmitOrder(preGeneratedId, customer, items, orderLat, orderLng);
-    if(!result || !result.ok) return null;
+    const result = await submitPublicOrder(payload);
+    if(!result || result.ok !== true) return null;
     const d = new Date();
     const dayKey = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
-    return { id: result.orderId, dayKey };
+    return { id: result.orderId || preGeneratedId, dayKey };
   }catch(e){
-    console.error('Order Ops submission failed', e);
+    console.error('Order submission failed', e);
     // Non-fatal: the WhatsApp message still goes out even if this fails.
     return null;
   }
@@ -1541,11 +1642,25 @@ function updateLocationStatusUI(){
   if(submitBtn) submitBtn.disabled = orderLocationStatus !== 'success' && !orderLocationSkipped;
 }
 
+// Pure: the required order-header field validation (party name, WhatsApp
+// number, city) used to gate opening the review sheet. Extracted as its
+// own function (out of openOrderConfirm) purely so it's unit-testable
+// without a DOM — see test_order_form_firestore_client.js.
+function validateOrderForm(fields){
+  const f = fields||{};
+  return {
+    custName: !String(f.custName||'').trim(),
+    custPhone: !/^\d{10}$/.test(String(f.custPhone||'').trim()),
+    custCity: !String(f.custCity||'').trim(),
+  };
+}
+
 // Step 1: validate, then show the "review before sending" dialog.
 function openOrderConfirm(){
-  formErrors.custName = !custName.trim();
-  formErrors.custPhone = !/^\d{10}$/.test(custPhone.trim());
-  formErrors.custCity = !custCity.trim();
+  const errs = validateOrderForm({ custName, custPhone, custCity });
+  formErrors.custName = errs.custName;
+  formErrors.custPhone = errs.custPhone;
+  formErrors.custCity = errs.custCity;
 
   if(formErrors.custName || formErrors.custPhone || formErrors.custCity){
     render();
