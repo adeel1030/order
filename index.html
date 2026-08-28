@@ -1206,7 +1206,7 @@ function getOrderStats(){
   return { lineCount, totalPieces };
 }
 
-const FORM_BUILD = "2026-08-28-firestore-preview3"; // Task #55 test build -- talks to the now-deployed Cloud Functions (publicGetCatalog/publicSubmitOrder/publicTrackOrder, live Cloud Run URLs wired in above) instead of the old Apps Script backend; still NOT deployed to order.maproductsindia.com itself -- this file has not been smoke-tested against the live functions yet (see ORDER_OPS_FIRESTORE_REWRITE_STATUS.md's continuation checklist). Only silent visitor/tracking-view LOGGING still calls the old backend -- see the top-of-file comment block. Mirrors how order-ops-firestore.html's APP_BUILD was bumped for its own Task #54 test build.
+const FORM_BUILD = "2026-08-28-firestore-go-live-1"; // 2026-08-28: promoted to production (order.maproductsindia.com) -- talks to the deployed Cloud Functions (publicGetCatalog/publicSubmitOrder/publicTrackOrder, live Cloud Run URLs wired in above) instead of the old Apps Script backend. publicGetCatalog/publicSubmitOrder/publicTrackOrder were already smoke-tested live and are serving real traffic (see ORDER_OPS_FIRESTORE_REWRITE_STATUS.md). Only silent visitor/tracking-view LOGGING still calls the old Apps Script backend -- see the top-of-file comment block; pure analytics, no effect on order correctness.
 // Per-item order cap (2026-08-21): a single line item can't exceed 50
 // cases worth of pieces (qty loose-pieces + cases*caseSize combined, not
 // 50 cases on top of separately-unlimited loose pieces). Items with no
