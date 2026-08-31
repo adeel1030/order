@@ -525,6 +525,16 @@ const ORDEROPS_SECRET = "MOI-PublicForm-9fK2mQ7xR4";
 const PUBLIC_GET_CATALOG_URL = "https://publicgetcatalog-tldch7755a-em.a.run.app";
 const PUBLIC_SUBMIT_ORDER_URL = "https://publicsubmitorder-tldch7755a-em.a.run.app";
 const PUBLIC_TRACK_ORDER_URL = "https://publictrackorder-tldch7755a-em.a.run.app";
+// ADDED (Round 10 audit, "publicGetCatalog leaking full customer PII before
+// the verify last-4-digits check ever runs"): a brand-new Cloud Function,
+// deployed alongside the other three above -- PASTE ITS REAL TRIGGER URL
+// HERE the same way the three above were originally filled in (Firebase
+// console -> Build -> Functions -> publicVerifyCustomer -> copy the
+// "Trigger URL" shown on its row) the first time it's deployed. Left as an
+// obvious placeholder rather than guessing the URL pattern, since Cloud
+// Run URLs include a project-specific hash that can't be predicted from the
+// function name alone.
+const PUBLIC_VERIFY_CUSTOMER_URL = "https://publicverifycustomer-tldch7755a-em.a.run.app";
 // A raw fetch() has NO timeout of its own — on a slow/unreliable connection
 // (mobile data especially), a request that never gets a response just hangs
 // forever with no error, which looks exactly like "stuck loading forever,
@@ -584,6 +594,21 @@ async function fetchPublicTrackOrder(mode, param){
   const json = await res.json();
   if(json.error) throw new Error(json.error);
   return json; // {data:{order,readyStock}} for byId, {data:{orders}} for byPhone
+}
+// ADDED (Round 10 audit, "publicGetCatalog leaking full customer PII before
+// the verify last-4-digits check ever runs"): the actual last-4-digits
+// comparison now happens server-side (publicVerifyCustomer), against
+// Firestore's live customer doc -- fetchPublicCatalog's customers[] no
+// longer carries phone/address/gstin at all (see shapePublicCustomer's own
+// comment in functions/lib/adminPublic.js), only a hasPhone boolean. Never
+// throws on a simple wrong-code/no-match -- that's a normal, expected
+// result ({ok:false}), not an error; only a genuine network/server problem
+// throws.
+async function fetchPublicVerifyCustomer(customerId, last4){
+  const res = await fetchWithTimeout(`${PUBLIC_VERIFY_CUSTOMER_URL}?secret=${encodeURIComponent(ORDEROPS_SECRET)}&customerId=${encodeURIComponent(customerId)}&last4=${encodeURIComponent(last4)}&_=${Date.now()}`);
+  const json = await res.json();
+  if(json.error) throw new Error(json.error);
+  return json; // {ok:true, customer:{name,phone,city,address,gstin}} on match, {ok:false} otherwise
 }
 // NOTE: the old orderOpsSave(key, value) whole-array "save" helper was
 // removed here (2026-08-21 audit) — the backend no longer accepts public
@@ -791,9 +816,10 @@ let expandedCats = new Set();
 // see their city/address with zero proof) — it asks for the last 4 digits
 // of the WhatsApp number on file before unlocking anything.
 let nameSuggestOpen = false;
-let pendingMatch = null;      // candidate customer awaiting verification
+let pendingMatch = null;      // candidate customer awaiting verification -- only ever {id,name,city,hasPhone} now (see fetchPublicCatalog/shapePublicCustomer), never the real phone/address/gstin
 let verifyDigits = '';
 let verifyError = '';
+let verifying = false; // true while submitPartyVerify's server round-trip is in flight
 let submitting = false;
 let searchQuery = '';
 
@@ -1206,7 +1232,7 @@ function getOrderStats(){
   return { lineCount, totalPieces };
 }
 
-const FORM_BUILD = "2026-08-28-firestore-go-live-1"; // 2026-08-28: promoted to production (order.maproductsindia.com) -- talks to the deployed Cloud Functions (publicGetCatalog/publicSubmitOrder/publicTrackOrder, live Cloud Run URLs wired in above) instead of the old Apps Script backend. publicGetCatalog/publicSubmitOrder/publicTrackOrder were already smoke-tested live and are serving real traffic (see ORDER_OPS_FIRESTORE_REWRITE_STATUS.md). Only silent visitor/tracking-view LOGGING still calls the old Apps Script backend -- see the top-of-file comment block; pure analytics, no effect on order correctness.
+const FORM_BUILD = "2026-08-31-firestore-round10"; // ROUND 10 (2026-08-31) security fix pass: publicGetCatalog no longer sends every customer's full phone/address/GSTIN to the browser before the "confirm it's you" check -- that check now genuinely happens server-side (new publicVerifyCustomer Cloud Function; see functions/index.js and this file's PUBLIC_VERIFY_CUSTOMER_URL). Also fixed: customer-entered fields (name/phone/city/address/gstin/date) are now esc()-ed before going into innerHTML (self-XSS); a genuinely failed order submission now shows a real "Order not submitted, try again" screen with the form intact, instead of always claiming "✅ Order submitted!"; a double-submit guard on the final Submit button. (2026-08-28: promoted to production -- talks to the deployed Cloud Functions (publicGetCatalog/publicSubmitOrder/publicTrackOrder) instead of the old Apps Script backend. Only silent visitor/tracking-view LOGGING still calls the old Apps Script backend -- see the top-of-file comment block; pure analytics, no effect on order correctness.)
 // Per-item order cap (2026-08-21): a single line item can't exceed 50
 // cases worth of pieces (qty loose-pieces + cases*caseSize combined, not
 // 50 cases on top of separately-unlimited loose pieces). Items with no
@@ -1250,11 +1276,20 @@ function render(){
       <div class="meta-fields">
         <div class="field">
           <label>Date</label>
-          <input id="custDate" type="date" value="${custDate}" oninput="updateMeta(this)">
+          <input id="custDate" type="date" value="${esc(custDate)}" oninput="updateMeta(this)">
         </div>
         <div class="field" style="position:relative;">
           <label>Customer / Party <span class="required-mark">*</span></label>
-          <input id="custName" autocomplete="off" class="${formErrors.custName?'input-error':''}" value="${custName}" placeholder="Customer name" oninput="updateMeta(this)" ${partyLocked?'readonly style="background:var(--bg-warm);color:var(--ink-soft);"':''}>
+          <!-- BUG FIX (Round 10 audit, self-XSS): value was interpolated raw --
+               typing a double-quote character followed by an event-handler
+               attribute into this SAME field would break out of the
+               value="" attribute and inject it, executing in this person's
+               own browser the next time this page re-renders (this file
+               re-renders the whole form on every keystroke -- see
+               render()/updateMeta). esc() HTML-entity-encodes quotes and
+               angle-brackets, which is exactly what's needed inside a
+               double-quoted HTML attribute. -->
+          <input id="custName" autocomplete="off" class="${formErrors.custName?'input-error':''}" value="${esc(custName)}" placeholder="Customer name" oninput="updateMeta(this)" ${partyLocked?'readonly style="background:var(--bg-warm);color:var(--ink-soft);"':''}>
           ${formErrors.custName ? '<div class="field-error">Party name is required</div>' : ''}
           ${nameSuggestOpen && !partyLocked ? nameSuggestListHtml() : ''}
         </div>
@@ -1262,21 +1297,21 @@ function render(){
         ${partyLocked ? `<div class="field"><div class="mono" style="background:var(--bg-warm);border-radius:10px;padding:10px 12px;font-size:12px;">✅ Verified — <b>${esc(custName)}</b>${custCity?`, ${esc(custCity)}`:''}. <a href="#" onclick="clearPartyMatch();return false;" style="color:var(--primary);">Not you?</a></div></div>` : pendingMatch ? '' : `
         <div class="field">
           <label>WhatsApp Number <span class="required-mark">*</span></label>
-          <input id="custPhone" type="tel" inputmode="numeric" maxlength="10" class="${formErrors.custPhone?'input-error':''}" value="${custPhone}" placeholder="10-digit WhatsApp number" oninput="updateMeta(this)">
+          <input id="custPhone" type="tel" inputmode="numeric" maxlength="10" class="${formErrors.custPhone?'input-error':''}" value="${esc(custPhone)}" placeholder="10-digit WhatsApp number" oninput="updateMeta(this)">
           ${formErrors.custPhone ? `<div class="field-error">${custPhone.trim() ? 'Enter a valid 10-digit number' : 'WhatsApp number is required'}</div>` : ''}
         </div>
         <div class="field">
           <label>City <span class="required-mark">*</span></label>
-          <input id="custCity" class="${formErrors.custCity?'input-error':''}" value="${custCity}" placeholder="e.g. Jaipur" oninput="updateMeta(this)">
+          <input id="custCity" class="${formErrors.custCity?'input-error':''}" value="${esc(custCity)}" placeholder="e.g. Jaipur" oninput="updateMeta(this)">
           ${formErrors.custCity ? '<div class="field-error">City is required</div>' : ''}
         </div>
         <div class="field">
           <label>Customer Address (optional)</label>
-          <input id="custAddress" value="${custAddress}" placeholder="Customer Address" oninput="updateMeta(this)">
+          <input id="custAddress" value="${esc(custAddress)}" placeholder="Customer Address" oninput="updateMeta(this)">
         </div>
         <div class="field">
           <label>GSTIN (optional)</label>
-          <input id="custGstin" style="text-transform:uppercase;" value="${custGstin}" placeholder="22AAAAA0000A1Z5" oninput="updateMeta(this)">
+          <input id="custGstin" style="text-transform:uppercase;" value="${esc(custGstin)}" placeholder="22AAAAA0000A1Z5" oninput="updateMeta(this)">
         </div>`}
       </div>
     </header>
@@ -1407,29 +1442,54 @@ function selectPartySuggestion(custId){
   render();
 }
 function verifyBlockHtml(){
-  const hasPhone = pendingMatch && pendingMatch.phone && pendingMatch.phone.length>=4;
+  // BUG FIX (Round 10 audit, "publicGetCatalog leaking full customer PII
+  // before the verify last-4-digits check ever runs"): pendingMatch only
+  // ever carries {id,name,city,hasPhone} now (see shapePublicCustomer) --
+  // never the real phone number -- so this reads the hasPhone BOOLEAN
+  // instead of inspecting the customer's raw phone number directly (that
+  // field no longer exists on pendingMatch at all pre-verification).
+  const hasPhone = pendingMatch && pendingMatch.hasPhone;
   return `<div class="verify-block">
     <div style="font-weight:700;font-size:12.5px;margin-bottom:6px;">🔒 Confirm it's you</div>
     <div style="font-size:12px;color:var(--ink-soft);margin-bottom:8px;">${hasPhone?`Enter the <b>last 4 digits</b> of the WhatsApp number on file for "${esc(pendingMatch.name)}".`:`No WhatsApp number is on file for "${esc(pendingMatch.name)}" — can't verify this match.`}</div>
     ${hasPhone ? `
-      <input id="verifyDigitsInput" type="tel" inputmode="numeric" maxlength="4" placeholder="••••" value="${esc(verifyDigits)}" oninput="verifyDigits=this.value.replace(/\\D/g,'').slice(0,4);">
+      <input id="verifyDigitsInput" type="tel" inputmode="numeric" maxlength="4" placeholder="••••" value="${esc(verifyDigits)}" ${verifying?'disabled':''} oninput="verifyDigits=this.value.replace(/\\D/g,'').slice(0,4);">
       ${verifyError ? `<div class="field-error" style="text-align:center;margin-top:6px;">${esc(verifyError)}</div>` : ''}
       <div style="display:flex;gap:8px;margin-top:10px;">
-        <button type="button" class="btn-edit-order" style="flex:1;" onclick="cancelPartyVerify()">Not me</button>
-        <button type="button" class="btn-submit-final" style="flex:1;" onclick="submitPartyVerify()">Verify</button>
+        <button type="button" class="btn-edit-order" style="flex:1;" ${verifying?'disabled':''} onclick="cancelPartyVerify()">Not me</button>
+        <button type="button" class="btn-submit-final" style="flex:1;" ${verifying?'disabled':''} onclick="submitPartyVerify()">${verifying?'Checking…':'Verify'}</button>
       </div>
     ` : `<button type="button" class="btn-edit-order" style="width:100%;" onclick="cancelPartyVerify()">Enter details as a new customer</button>`}
   </div>`;
 }
-function submitPartyVerify(){
-  if(!pendingMatch) return;
-  const last4 = String(pendingMatch.phone||'').trim().slice(-4);
-  if(verifyDigits === last4 && verifyDigits.length===4){
-    custName = pendingMatch.name;
-    custCity = pendingMatch.city || '';
-    custAddress = pendingMatch.address || '';
-    custGstin = pendingMatch.gstin || '';
-    custPhone = pendingMatch.phone || '';
+// BUG FIX (Round 10 audit): this used to compare verifyDigits against the
+// candidate customer's raw phone number LOCALLY -- meaningless once that
+// number is no longer sent to the browser pre-verification (see
+// verifyBlockHtml's comment). The actual last-4-digits check now happens
+// server-side, via
+// publicVerifyCustomer, against Firestore's live customer doc -- this
+// function just calls it and reacts to the result. Also doubles as this
+// flow's double-submit guard (the `verifying` flag disables every button
+// in verifyBlockHtml while the request is in flight).
+async function submitPartyVerify(){
+  if(!pendingMatch || verifying || verifyDigits.length!==4) return;
+  verifying = true; verifyError = ''; render();
+  let result;
+  try{
+    result = await fetchPublicVerifyCustomer(pendingMatch.id, verifyDigits);
+  }catch(e){
+    verifying = false;
+    verifyError = "Couldn't check that right now — check your connection and try again.";
+    render();
+    return;
+  }
+  verifying = false;
+  if(result && result.ok && result.customer){
+    custName = result.customer.name || pendingMatch.name;
+    custCity = result.customer.city || '';
+    custAddress = result.customer.address || '';
+    custGstin = result.customer.gstin || '';
+    custPhone = result.customer.phone || '';
     phoneMasked = true;
     partyLocked = true;
     pendingMatch = null;
@@ -1455,6 +1515,7 @@ function cancelPartyVerify(){
   pendingMatch = null;
   verifyDigits = '';
   verifyError = '';
+  verifying = false;
   render();
 }
 function clearPartyMatch(){
@@ -1498,11 +1559,14 @@ function resetAll(){
   pendingMatch = null;
   verifyDigits = '';
   verifyError = '';
+  verifying = false;
   formErrors = { custName:false, custPhone:false, custCity:false };
   searchQuery = '';
   orderLocation = null;
   orderLocationStatus = 'idle';
   orderLocationSkipped = false;
+  pendingOrderId = null;
+  pendingTrackLink = null;
   render();
 }
 
@@ -1691,9 +1755,14 @@ function openOrderConfirm(){
     <div class="confirm-sheet">
       <h2>Review your order</h2>
       <p class="sub">Check everything below, then submit to the company.</p>
+      <!-- BUG FIX (Round 10 audit, self-XSS): these were interpolated as raw
+           HTML content (not just an attribute) -- typing e.g. an img tag
+           with an onerror attribute as the party name would render and
+           execute directly the moment this review sheet opens. esc()
+           HTML-entity-encodes it into inert text. -->
       <div class="confirm-party">
-        <b>${custName}</b>
-        Ph. ${custPhone} &nbsp;·&nbsp; ${custDate}<br>${custCity}${custCity && custAddress ? ', ' : ''}${custAddress}
+        <b>${esc(custName)}</b>
+        Ph. ${esc(custPhone)} &nbsp;·&nbsp; ${esc(custDate)}<br>${esc(custCity)}${custCity && custAddress ? ', ' : ''}${esc(custAddress)}
       </div>
       <div class="confirm-items">${rows.join('')}</div>
       <div class="confirm-total-row"><span>Total Pieces</span><span>${totalPieces} pcs · ${lineCount} items</span></div>
@@ -1710,9 +1779,18 @@ function openOrderConfirm(){
   document.getElementById('submitOrderFinalBtn').addEventListener('click', async ()=>{
     if(orderLocationStatus!=='success' && !orderLocationSkipped){ showAlert('Please allow location access, or choose "Continue without location".'); return; }
     const btn = document.getElementById('submitOrderFinalBtn');
+    // BUG FIX (Round 10 audit): double-submit guard -- this button had none
+    // at all, only a disabled=true with no matching early-return check.
+    if(btn.disabled) return;
     btn.disabled = true; btn.textContent = 'Submitting…';
-    const trackLink = await finalizeSubmitOrder();
-    showOrderSuccess(trackLink);
+    // BUG FIX (Round 10 audit, "customer order form submit fail ho jaye to
+    // bhi ✅ Order submitted hi dikhta hai"): finalizeSubmitOrder now
+    // returns {ok, trackLink} instead of trackLink|null, so a genuine
+    // submission failure shows an actual failure screen (see
+    // showOrderFailure below) instead of always claiming success.
+    const result = await finalizeSubmitOrder();
+    if(result.ok) showOrderSuccess(result.trackLink);
+    else showOrderFailure();
   });
   orderLocationSkipped = false; // each time this sheet opens, attempt a fresh capture rather than carrying over a stale skip choice from a previous open
   requestOrderLocation(); // start immediately — resolved well before the person finishes reviewing
@@ -1749,8 +1827,47 @@ function closeOrderConfirm(){
   const o = document.getElementById('orderConfirmOverlay');
   if(o) o.remove();
 }
+// BUG FIX (Round 10 audit, "customer order form submit fail ho jaye to bhi
+// ✅ Order submitted hi dikhta hai"): shown instead of showOrderSuccess when
+// finalizeSubmitOrder's server call genuinely failed. Deliberately does NOT
+// call resetAll() -- the whole point is the person's filled-in order isn't
+// lost, so they can retry without re-typing everything.
+function showOrderFailure(){
+  const overlay = document.getElementById('orderConfirmOverlay');
+  if(!overlay) return;
+  overlay.querySelector('.confirm-sheet').innerHTML = `
+    <div style="text-align:center;padding:10px 0 4px;">
+      <div style="font-size:38px;margin-bottom:10px;">⚠️</div>
+      <h2>Order not submitted</h2>
+      <p class="sub">Something went wrong sending your order to the company (maybe a network issue). We opened WhatsApp with your order details as a backup — please make sure that message actually sends. Your order details are still here, so you can try again.</p>
+      <button type="button" class="btn-submit-final" id="retrySubmitBtn" style="width:100%;">Try again</button>
+      <button type="button" class="btn-edit-order" id="editAfterFailBtn" style="width:100%;margin-top:8px;">‹ Edit order</button>
+    </div>
+  `;
+  document.getElementById('retrySubmitBtn').addEventListener('click', async ()=>{
+    const btn = document.getElementById('retrySubmitBtn');
+    if(btn.disabled) return;
+    btn.disabled = true; btn.textContent = 'Submitting…';
+    const result = await finalizeSubmitOrder();
+    if(result.ok) showOrderSuccess(result.trackLink);
+    else showOrderFailure();
+  });
+  document.getElementById('editAfterFailBtn').addEventListener('click', closeOrderConfirm);
+}
 
+// BUG FIX (Round 10 audit): the order id + tracking link used to be
+// generated fresh on every call -- fine for a single attempt, but
+// showOrderFailure's "Try again" button calls this same function again on
+// retry, and a fresh id each time would mean a retry after a network hiccup
+// where the FIRST write actually landed server-side (just its response was
+// lost) creates a genuine DUPLICATE order instead of being naturally de-
+// duped by publicSubmitOrder's own "same id already written -> idempotent
+// no-op" transaction logic. Cached at module scope instead, reused across
+// retries, and only cleared once a submission actually succeeds.
+let pendingOrderId = null, pendingTrackLink = null;
 // Step 2: the actual send — same button used to do both WhatsApp + Order Ops.
+// Returns {ok, trackLink} -- ok must be checked by the caller before
+// treating this as a success; see the "✅ Order submitted" bug fix above.
 async function finalizeSubmitOrder(){
   const waNumber = '919266725028';
   const { lineCount, totalPieces } = getOrderStats();
@@ -1758,10 +1875,16 @@ async function finalizeSubmitOrder(){
   // Generate the order id and its tracking link BEFORE any async work, so
   // window.open() below still fires synchronously inside the click handler
   // (a delayed window.open can get blocked as a popup by the browser).
-  const preId = uid();
-  const nowForLink = new Date();
-  const dayKeyForLink = nowForLink.getFullYear()+'-'+String(nowForLink.getMonth()+1).padStart(2,'0')+'-'+String(nowForLink.getDate()).padStart(2,'0');
-  const trackLink = `${location.href.split('?')[0]}?id=${encodeURIComponent(preId)}&d=${dayKeyForLink}`;
+  // Reused across a retry rather than regenerated -- see the
+  // pendingOrderId comment above.
+  if(!pendingOrderId){
+    pendingOrderId = uid();
+    const nowForLink = new Date();
+    const dayKeyForLink = nowForLink.getFullYear()+'-'+String(nowForLink.getMonth()+1).padStart(2,'0')+'-'+String(nowForLink.getDate()).padStart(2,'0');
+    pendingTrackLink = `${location.href.split('?')[0]}?id=${encodeURIComponent(pendingOrderId)}&d=${dayKeyForLink}`;
+  }
+  const preId = pendingOrderId;
+  const trackLink = pendingTrackLink;
 
   const lines = [];
   lines.push('*Order*');
@@ -1798,7 +1921,12 @@ async function finalizeSubmitOrder(){
   window.open(`https://wa.me/${waNumber}?text=${waMsg}`, '_blank');
   const result = await submitToOrderOps(preId);
   submitting = false; render();
-  return result ? trackLink : null;
+  // BUG FIX (Round 10 audit): only clear the cached order id once the
+  // submission actually succeeded -- on failure, pendingOrderId/pendingTrackLink
+  // stay put so showOrderFailure's "Try again" reuses the SAME id (see the
+  // pendingOrderId comment above this function).
+  if(result){ pendingOrderId = null; pendingTrackLink = null; }
+  return { ok: !!result, trackLink };
 }
 
 document.getElementById('buildFooter').textContent = 'build ' + FORM_BUILD;
