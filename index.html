@@ -1039,13 +1039,17 @@ function trackOrderCardHtml(order){
       <div style="font-weight:700;font-size:13.5px;color:var(--green-dark);">🚚 ${esc(order.transportName)}</div>
       ${order.dispatchedAt ? `<div style="font-size:11px;color:var(--ink-soft);margin-top:2px;">Booked ${new Date(order.dispatchedAt).toLocaleDateString(undefined,{day:'2-digit',month:'short',year:'numeric'})}</div>` : ''}
       ${order.totalCases ? `<div style="font-size:11.5px;margin-top:4px;">Total no of Cases Booked - <b>${order.totalCases}</b></div>` : ''}
-      ${order.lrNumber ? `<div style="font-size:11.5px;margin-top:4px;">LR Number - <b>${esc(order.lrNumber)}</b></div>` : ''}
+      ${(order.lrNumber && order.photoType!=='stock') ? `<div style="font-size:11.5px;margin-top:4px;">LR Number - <b>${esc(order.lrNumber)}</b></div>` : ''}
     </div>` : '';
   // Independent of the dispatch box above — LR can be uploaded while the
   // order is still Ready (before transport/dispatch info is even set), so
   // this shouldn't wait on that box's own status condition to show up.
+  // Round 13.1: a Stock Photo is a loose-goods verification photo, not a
+  // real Lorry Receipt -- label it correctly instead of always saying "LR"
+  // (order.photoType was added in Round 13; older orders default to 'lr').
+  const isStockPhoto = order.photoType === 'stock';
   const lrDownloadHtml = (order.lrPhotoUrl && order.lrUploadedAt && (Date.now()-order.lrUploadedAt)<30*24*60*60*1000) ? `
-    <button type="button" onclick="openLRViewDialog()" style="display:block;width:100%;text-align:center;margin-bottom:12px;background:var(--green-pale);border:1.5px solid var(--green-dark);color:var(--green-dark);font-weight:700;font-size:12.5px;padding:11px;border-radius:11px;cursor:pointer;font-family:'Inter',sans-serif;">📄 View / Download LR</button>` : '';
+    <button type="button" onclick="openLRViewDialog()" style="display:block;width:100%;text-align:center;margin-bottom:12px;background:var(--green-pale);border:1.5px solid var(--green-dark);color:var(--green-dark);font-weight:700;font-size:12.5px;padding:11px;border-radius:11px;cursor:pointer;font-family:'Inter',sans-serif;">${isStockPhoto ? '📦 View / Download Stock Photo' : '📄 View / Download LR'}</button>` : '';
   return `
     <div class="track-order-card">
       <div class="track-greeting">Hello, ${esc(order.customerName||'there')}! 👋</div>
@@ -1089,17 +1093,18 @@ function openLRViewDialog(){
   const order = trackDirectOrder;
   if(!order || !order.lrPhotoUrl) return;
   closeLRView();
+  const isStockPhoto = order.photoType === 'stock';
   const overlay = document.createElement('div');
   overlay.className = 'lr-view-overlay';
   overlay.id = 'lrViewOverlay';
   overlay.innerHTML = `
     <div class="lr-view-box">
       <div class="lr-view-topbar">
-        <a href="${esc(order.lrPhotoUrl)}" target="_blank" rel="noopener" class="lr-download-btn">⬇ Download LR</a>
+        <a href="${esc(order.lrPhotoUrl)}" target="_blank" rel="noopener" class="lr-download-btn">⬇ Download ${isStockPhoto ? 'Photo' : 'LR'}</a>
         <button type="button" class="lr-view-close" id="lrViewCloseBtn">✕</button>
       </div>
-      ${order.lrNumber ? `<div class="lr-view-number">LR Number: <b>${esc(order.lrNumber)}</b></div>` : ''}
-      <img src="${esc(lrEmbedUrl(order))}" class="lr-view-img" alt="LR photo" id="lrViewImg" />
+      ${(order.lrNumber && !isStockPhoto) ? `<div class="lr-view-number">LR Number: <b>${esc(order.lrNumber)}</b></div>` : ''}
+      <img src="${esc(lrEmbedUrl(order))}" class="lr-view-img" alt="${isStockPhoto ? 'Stock photo' : 'LR photo'}" id="lrViewImg" />
     </div>`;
   document.body.appendChild(overlay);
   overlay.addEventListener('click', (e)=>{ if(e.target===overlay) closeLRView(); });
@@ -1232,7 +1237,7 @@ function getOrderStats(){
   return { lineCount, totalPieces };
 }
 
-const FORM_BUILD = "2026-08-31-firestore-round10"; // ROUND 10 (2026-08-31) security fix pass: publicGetCatalog no longer sends every customer's full phone/address/GSTIN to the browser before the "confirm it's you" check -- that check now genuinely happens server-side (new publicVerifyCustomer Cloud Function; see functions/index.js and this file's PUBLIC_VERIFY_CUSTOMER_URL). Also fixed: customer-entered fields (name/phone/city/address/gstin/date) are now esc()-ed before going into innerHTML (self-XSS); a genuinely failed order submission now shows a real "Order not submitted, try again" screen with the form intact, instead of always claiming "✅ Order submitted!"; a double-submit guard on the final Submit button. (2026-08-28: promoted to production -- talks to the deployed Cloud Functions (publicGetCatalog/publicSubmitOrder/publicTrackOrder) instead of the old Apps Script backend. Only silent visitor/tracking-view LOGGING still calls the old Apps Script backend -- see the top-of-file comment block; pure analytics, no effect on order correctness.)
+const FORM_BUILD = "2026-09-01-firestore-round13.1"; // ROUND 13.1 (2026-09-01), user question "ye chiz wha b to update hogi na jaha order track hota hai" -- this tracking page was NOT actually aware of order-ops-firestore.html's new LR/Stock photo choice (Round 13): it always showed "LR" wording (View/Download LR, LR Number, alt="LR photo") no matter which type staff picked when uploading. trackOrderCardHtml/openLRViewDialog now read order.photoType and show "📦 Stock Photo" wording (and hide the LR Number line) when it's a stock photo, matching the staff app's own order-list badge. ROUND 10 (2026-08-31) security fix pass: publicGetCatalog no longer sends every customer's full phone/address/GSTIN to the browser before the "confirm it's you" check -- that check now genuinely happens server-side (new publicVerifyCustomer Cloud Function; see functions/index.js and this file's PUBLIC_VERIFY_CUSTOMER_URL). Also fixed: customer-entered fields (name/phone/city/address/gstin/date) are now esc()-ed before going into innerHTML (self-XSS); a genuinely failed order submission now shows a real "Order not submitted, try again" screen with the form intact, instead of always claiming "✅ Order submitted!"; a double-submit guard on the final Submit button. (2026-08-28: promoted to production -- talks to the deployed Cloud Functions (publicGetCatalog/publicSubmitOrder/publicTrackOrder) instead of the old Apps Script backend. Only silent visitor/tracking-view LOGGING still calls the old Apps Script backend -- see the top-of-file comment block; pure analytics, no effect on order correctness.)
 // Per-item order cap (2026-08-21): a single line item can't exceed 50
 // cases worth of pieces (qty loose-pieces + cases*caseSize combined, not
 // 50 cases on top of separately-unlimited loose pieces). Items with no
