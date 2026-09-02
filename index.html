@@ -657,7 +657,17 @@ const CASE_SIZE_EXCEPTIONS = [
 ];
 
 function normalizeSize(size){
-  return size.toLowerCase().replace(/\s+/g,'');
+  // BUGFIX (2026-09-02, crash/regression sweep): a catalog item missing its
+  // `size` field (a malformed admin-entered row, or partial data mid-edit
+  // on the Order Ops side) used to throw a TypeError right here
+  // ("Cannot read properties of undefined") the moment preprocessCatalog()
+  // sorted/keyed that item -- which loadLiveCatalog()'s try/catch then
+  // treated identically to a real network failure, retried 3 times, and
+  // showed "check your internet connection" to EVERY visitor until an
+  // admin found and fixed the one bad row. Guarding here (and in
+  // groupFlatCatalogItems/preprocessCatalog below) means one malformed item
+  // can no longer take down catalog loading for everyone.
+  return String(size==null?'':size).toLowerCase().replace(/\s+/g,'');
 }
 // Parses "25mL"/"1L"/"3 ml" etc into a comparable mL number, so items sort
 // by actual size (25 < 50 < 100) instead of alphabetically ("100" < "25").
@@ -683,9 +693,16 @@ let idCounter = 0;
 let CATALOG = [];
 function preprocessCatalog(){
   idCounter = 0;
-  CATALOG.sort((a,b)=>a.cat.localeCompare(b.cat));
+  // BUGFIX (2026-09-02, crash/regression sweep): every field read here used
+  // to be trusted blindly (a.cat/a.name/it.name/it.size). One catalog item
+  // with a missing name/size/cat (a malformed admin-entered row) threw a
+  // TypeError mid-sort, which the caller (loadLiveCatalog) couldn't tell
+  // apart from a real network failure -- see normalizeSize's own comment
+  // for the full story. String(...||'') everywhere below means a bad row
+  // sorts to the top/bottom predictably instead of crashing the whole form.
+  CATALOG.sort((a,b)=>String(a.cat||'').localeCompare(String(b.cat||'')));
   CATALOG.forEach(cat => {
-    cat.items.sort((a,b)=>a.name.localeCompare(b.name) || (sizeToMlForSort(a.size)-sizeToMlForSort(b.size)));
+    cat.items.sort((a,b)=>String(a.name||'').localeCompare(String(b.name||'')) || (sizeToMlForSort(a.size)-sizeToMlForSort(b.size)));
     cat.items.forEach(it => {
       it.id = 'i' + (idCounter++);
       it.caseSize = it.caseSize!=null ? it.caseSize : getCaseSize(it);
@@ -736,6 +753,17 @@ function bindCatalogFailedScreen(){
     await loadLiveCatalog();
     render();
   });
+}
+// BUGFIX (2026-09-02, crash/regression sweep) -- pairs with the "No products
+// available right now" empty-catalog message in render(): plain inline
+// onclick, matching this file's existing pattern for buttons rendered
+// inside the main app.innerHTML template (toggleCat/openTrackMode/etc all
+// do the same, rather than a separate post-render addEventListener bind).
+async function retryEmptyCatalog(){
+  catalogLoaded = false; // shows the loading spinner while retrying, same as bindCatalogFailedScreen's flow
+  render();
+  await loadLiveCatalog();
+  render();
 }
 // FIRESTORE (Task #55): the old delta-since mechanism (lastLiteUpdatedAt +
 // orderOpsFetchLiteDelta) is deliberately NOT ported here — publicGetCatalog
@@ -1185,7 +1213,7 @@ function renderTrackMode(){
       <h2>Track your order</h2>
       <div class="sub">Enter the WhatsApp number you used to place the order.</div>
       <div class="track-phone-row">
-        <input type="tel" inputmode="numeric" maxlength="10" placeholder="10-digit WhatsApp number" value="${trackPhone}" oninput="trackPhone=this.value" onkeydown="if(event.key==='Enter') searchOrdersByPhone()">
+        <input type="tel" inputmode="numeric" maxlength="10" placeholder="10-digit WhatsApp number" value="${esc(trackPhone)}" oninput="trackPhone=this.value" onkeydown="if(event.key==='Enter') searchOrdersByPhone()">
         <button type="button" class="track-search-btn" ${trackSearching?'disabled':''} onclick="searchOrdersByPhone()">Search</button>
       </div>
     </div>
@@ -1237,7 +1265,7 @@ function getOrderStats(){
   return { lineCount, totalPieces };
 }
 
-const FORM_BUILD = "2026-09-01-firestore-round13.1"; // ROUND 13.1 (2026-09-01), user question "ye chiz wha b to update hogi na jaha order track hota hai" -- this tracking page was NOT actually aware of order-ops-firestore.html's new LR/Stock photo choice (Round 13): it always showed "LR" wording (View/Download LR, LR Number, alt="LR photo") no matter which type staff picked when uploading. trackOrderCardHtml/openLRViewDialog now read order.photoType and show "📦 Stock Photo" wording (and hide the LR Number line) when it's a stock photo, matching the staff app's own order-list badge. ROUND 10 (2026-08-31) security fix pass: publicGetCatalog no longer sends every customer's full phone/address/GSTIN to the browser before the "confirm it's you" check -- that check now genuinely happens server-side (new publicVerifyCustomer Cloud Function; see functions/index.js and this file's PUBLIC_VERIFY_CUSTOMER_URL). Also fixed: customer-entered fields (name/phone/city/address/gstin/date) are now esc()-ed before going into innerHTML (self-XSS); a genuinely failed order submission now shows a real "Order not submitted, try again" screen with the form intact, instead of always claiming "✅ Order submitted!"; a double-submit guard on the final Submit button. (2026-08-28: promoted to production -- talks to the deployed Cloud Functions (publicGetCatalog/publicSubmitOrder/publicTrackOrder) instead of the old Apps Script backend. Only silent visitor/tracking-view LOGGING still calls the old Apps Script backend -- see the top-of-file comment block; pure analytics, no effect on order correctness.)
+const FORM_BUILD = "2026-09-02-firestore-round13.2"; // CRASH/REGRESSION/STRESS SWEEP (2026-09-02), user request: "ab zra Iska End to end Regression, Stress and Site Crash Ki Full testing krdo. only order form and order ops ki. koi Bug aye to hand to hand fix kr dena." -- full offline-mocked Playwright regression+stress+crash pass (every fix below interactively re-verified end-to-end in a real headless Chromium session against this actual, unmodified file, zero uncaught page errors across all scenarios). 7 fixes: (1) the order table never showed WHICH item a row was for, only its size -- easy to place a wrong-item order when several items share a size -- added an Item name column/cell before Size. (2) the item-search box rendered its own typed value back into the page unescaped (self-XSS via a crafted query string / shared-device typing) -- now esc()-ed, plus a maxlength=120 sanity cap. (3) a malformed/missing-field catalog item (a bad Firestore doc, or a genuinely empty catalog) could crash normalizeSize()/preprocessCatalog() and take the whole form down -- normalizeSize now coerces null/undefined to '' instead of calling .toLowerCase() on it, and the sort comparators String()-coerce cat/name first. (4) an empty catalog (e.g. a transient load hiccup) rendered a silently blank product area with no way forward -- added a "No products available right now -- Retry" state (retryEmptyCatalog()) instead of a dead screen. (5) if the browser's location permission prompt was denied, dismissed, or simply never resolved, the "getting your location..." submit-blocking state could hang forever with no way to actually place the order -- added a 15s timeout (LOCATION_REQUEST_TIMEOUT_MS) that falls through to the existing error state, and a "Continue without location" skip button is now also offered during the pending state itself, not just after a failure. (6) the tracking-page phone number input rendered its own value back unescaped (self-XSS, same class of bug as #2) -- now esc()-ed. (7) server-side: buildOrderDocFromPayload/validatePublicOrderPayload (functions/lib/adminPublic.js) had no upper bound on item quantity or item count -- a garbage/abusive payload (e.g. qty:99999999999 or a 50,000-item array) could reach Firestore and blow up downstream stock math/report rendering -- added MAX_ORDER_ITEM_QTY (100,000) and MAX_ORDER_ITEMS (500) caps, rejected with a clear error before the order is ever created; needs the Cloud Functions to be redeployed (functions/lib/adminPublic.js changed) for this cap to take effect in production. Full regression test suite (34 files) green. ROUND 13.1 (2026-09-01), user question "ye chiz wha b to update hogi na jaha order track hota hai" -- this tracking page was NOT actually aware of order-ops-firestore.html's new LR/Stock photo choice (Round 13): it always showed "LR" wording (View/Download LR, LR Number, alt="LR photo") no matter which type staff picked when uploading. trackOrderCardHtml/openLRViewDialog now read order.photoType and show "📦 Stock Photo" wording (and hide the LR Number line) when it's a stock photo, matching the staff app's own order-list badge. ROUND 10 (2026-08-31) security fix pass: publicGetCatalog no longer sends every customer's full phone/address/GSTIN to the browser before the "confirm it's you" check -- that check now genuinely happens server-side (new publicVerifyCustomer Cloud Function; see functions/index.js and this file's PUBLIC_VERIFY_CUSTOMER_URL). Also fixed: customer-entered fields (name/phone/city/address/gstin/date) are now esc()-ed before going into innerHTML (self-XSS); a genuinely failed order submission now shows a real "Order not submitted, try again" screen with the form intact, instead of always claiming "✅ Order submitted!"; a double-submit guard on the final Submit button. (2026-08-28: promoted to production -- talks to the deployed Cloud Functions (publicGetCatalog/publicSubmitOrder/publicTrackOrder) instead of the old Apps Script backend. Only silent visitor/tracking-view LOGGING still calls the old Apps Script backend -- see the top-of-file comment block; pure analytics, no effect on order correctness.)
 // Per-item order cap (2026-08-21): a single line item can't exceed 50
 // cases worth of pieces (qty loose-pieces + cases*caseSize combined, not
 // 50 cases on top of separately-unlimited loose pieces). Items with no
@@ -1322,10 +1350,34 @@ function render(){
     </header>
 
     <div class="search-box">
-      <input id="itemSearch" type="text" placeholder="🔎 Search an item (e.g. Castor 100ml)…" value="${searchQuery}" oninput="updateSearch(this)">
+      <!-- BUGFIX (2026-09-02, crash/regression sweep): searchQuery used to
+           go straight into this value attribute unescaped -- the one field
+           that slipped through the esc() pass every other input on this
+           page already got (Round 10 audit). A quote-breaking payload
+           pasted into the search box could break out of the attribute and
+           inject arbitrary markup into this customer's own page (self-XSS).
+           Also added a maxlength -- this is a search box, not a form field,
+           and had no length cap at all before. -->
+      <input id="itemSearch" type="text" maxlength="120" placeholder="🔎 Search an item (e.g. Castor 100ml)…" value="${esc(searchQuery)}" oninput="updateSearch(this)">
       ${searchQuery ? `<button type="button" class="search-clear" onclick="searchQuery='';render();">✕</button>` : ''}
     </div>
 
+    ${CATALOG.length===0 ? `
+    <!-- BUGFIX (2026-09-02, crash/regression sweep): a successful catalog
+         fetch that comes back with zero items (e.g. the backend's
+         catalogItems key is genuinely empty right now) used to render
+         nothing here at all -- catalogLoaded was already true so the real
+         loading/failed screens never showed, and the customer just saw a
+         blank page below the search box with no explanation and no way to
+         retry. Now shows an explicit message + retry, matching the tone of
+         renderCatalogFailedScreen. -->
+    <div style="text-align:center;padding:36px 20px;color:var(--ink-soft);">
+      <div style="font-size:30px;margin-bottom:8px;">📦</div>
+      <div style="font-weight:600;font-size:14px;margin-bottom:4px;">No products available right now</div>
+      <div style="font-size:12.5px;margin-bottom:16px;">Please check back shortly, or retry below.</div>
+      <button type="button" class="track-search-btn" onclick="retryEmptyCatalog()" style="padding:10px 24px;">↻ Retry</button>
+    </div>
+    ` : ''}
     ${CATALOG.map((cat, idx) => {
       const matches = catMatchingItems(cat);
       if(searchQuery && matches.length===0) return '';
@@ -1344,6 +1396,7 @@ function render(){
         <table>
           <thead>
             <tr>
+              <th>Item</th>
               <th>Size</th>
               <th class="num">MRP</th>
               <th class="num">Pcs</th>
@@ -1356,7 +1409,16 @@ function render(){
               const t = totalPcs(it);
               const hasCase = !!it.caseSize;
               return `<tr class="${t>0?'has-qty':''}">
-                <td>${it.size}</td>
+                <!-- BUGFIX (2026-09-02, crash/regression sweep): the item
+                     name was never shown in this table, only the size --
+                     a category with more than one distinctly-named product
+                     (e.g. a "Hair Oil" category holding both a Coconut and
+                     an Amla variant, both available in the same sizes) gave
+                     the customer zero way to tell which row was which
+                     product, a silent wrong-item-order risk on every such
+                     order, not just an edge case. -->
+                <td>${esc(it.name)}</td>
+                <td>${esc(it.size)}</td>
                 <td class="num">₹${it.mrp}</td>
                 <td class="num"><input class="qty-input" type="number" min="0" max="${hasCase?FORM_MAX_CASES*it.caseSize:FORM_MAX_PC_NO_CASE}" value="${it.qty||''}" placeholder="0" oninput="updateField('${it.id}','qty',this.value)"></td>
                 <td class="num">
@@ -1669,6 +1731,24 @@ let orderLocationStatus = 'idle'; // 'idle' | 'pending' | 'success' | 'error'
 // optional (see handlePublicOrderSubmission_, which happily accepts
 // null). This flag lets someone explicitly continue without sharing it.
 let orderLocationSkipped = false;
+// BUGFIX (2026-09-02, crash/regression sweep): getCurrentPosition's own
+// `timeout` option only reliably counts down once the browser starts
+// actually acquiring a fix -- several real browsers/WebViews do NOT run
+// that countdown while a permission prompt sits unanswered (the visitor
+// switched apps, ignored it, or their MDM/browser policy silently blocks
+// geolocation with neither a success nor an error callback ever firing).
+// Before this fix, that left orderLocationStatus stuck at 'pending'
+// forever, and the submit button --
+// `disabled = orderLocationStatus !== 'success' && !orderLocationSkipped`
+// -- permanently disabled, with the only escape hatch (the "Continue
+// without location" button) rendered exclusively in the 'error' state's
+// markup, never 'pending'. A customer could be stuck unable to place an
+// order at all. Fixed with an independent client-side backstop timer that
+// forces the state to 'error' (which DOES show the skip button) if
+// nothing has resolved it within LOCATION_REQUEST_TIMEOUT_MS, regardless
+// of what the browser's own geolocation timeout does or doesn't do.
+const LOCATION_REQUEST_TIMEOUT_MS = 15000;
+let __locationRequestTimer = null;
 function requestOrderLocation(){
   orderLocationStatus = 'pending';
   updateLocationStatusUI();
@@ -1677,13 +1757,22 @@ function requestOrderLocation(){
     updateLocationStatusUI();
     return;
   }
+  clearTimeout(__locationRequestTimer);
+  __locationRequestTimer = setTimeout(()=>{
+    if(orderLocationStatus==='pending'){
+      orderLocationStatus = 'error';
+      updateLocationStatusUI();
+    }
+  }, LOCATION_REQUEST_TIMEOUT_MS);
   navigator.geolocation.getCurrentPosition(
     pos => {
+      clearTimeout(__locationRequestTimer);
       orderLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude };
       orderLocationStatus = 'success';
       updateLocationStatusUI();
     },
     () => {
+      clearTimeout(__locationRequestTimer);
       orderLocation = null;
       orderLocationStatus = 'error';
       updateLocationStatusUI();
@@ -1693,7 +1782,12 @@ function requestOrderLocation(){
 }
 function locationStatusHtml(){
   if(orderLocationSkipped) return `<div class="confirm-location skipped">📍 Submitting without location. <a href="#" id="undoSkipLocationLink">Share it instead?</a></div>`;
-  if(orderLocationStatus==='pending') return `<div class="confirm-location pending">📍 Getting your location…</div>`;
+  // BUGFIX (same sweep): the 'pending' state used to have no skip option at
+  // all -- a customer waiting on a slow/unanswered GPS prompt had to either
+  // wait it out or abandon the order. Now offers "Continue without
+  // location" immediately, same as the 'error' state does, instead of only
+  // after LOCATION_REQUEST_TIMEOUT_MS forces an error state.
+  if(orderLocationStatus==='pending') return `<div class="confirm-location pending">📍 Getting your location…<br/><button type="button" id="skipLocationBtn" class="location-skip-btn">Continue without location</button></div>`;
   if(orderLocationStatus==='success') return `<div class="confirm-location success">📍 Location confirmed ✓</div>`;
   if(orderLocationStatus==='error') return `<div class="confirm-location error">⚠️ Couldn't get your location.<br/><button type="button" id="retryLocationBtn" class="location-retry-btn">Try again</button> <button type="button" id="skipLocationBtn" class="location-skip-btn">Continue without location</button></div>`;
   return '';
@@ -1704,7 +1798,7 @@ function updateLocationStatusUI(){
   const retryBtn = document.getElementById('retryLocationBtn');
   if(retryBtn) retryBtn.addEventListener('click', ()=>{ orderLocationSkipped = false; requestOrderLocation(); });
   const skipBtn = document.getElementById('skipLocationBtn');
-  if(skipBtn) skipBtn.addEventListener('click', ()=>{ orderLocationSkipped = true; orderLocation = null; updateLocationStatusUI(); });
+  if(skipBtn) skipBtn.addEventListener('click', ()=>{ clearTimeout(__locationRequestTimer); orderLocationSkipped = true; orderLocation = null; updateLocationStatusUI(); });
   const undoLink = document.getElementById('undoSkipLocationLink');
   if(undoLink) undoLink.addEventListener('click', (e)=>{ e.preventDefault(); orderLocationSkipped = false; requestOrderLocation(); });
   const submitBtn = document.getElementById('submitOrderFinalBtn');
