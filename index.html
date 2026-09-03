@@ -495,24 +495,28 @@
    scan (a direct doc read by id, and a direct customerPhone query). See
    publicTrackOrder's own header comment in functions/index.js.
 
-   STILL genuinely out of scope for this pass (tracked in
-   ORDER_OPS_FIRESTORE_REWRITE_STATUS.md, not silently dropped):
-   - Silent visitor/tracking-view logging (runVisitorLogging / appendLogEntry,
-     via orderOpsAppend below) still calls the OLD Apps Script backend,
-     unchanged. This is pure analytics (who viewed what, from where) with no
-     effect on order data correctness -- lower stakes than order-submit/
-     tracking, deliberately left for a follow-up pass rather than adding a
-     third public Cloud Function under today's time pressure. Once the
-     Apps Script backend is fully decommissioned this logging will silently
-     stop working; replace with Firestore writes (siteVisitLogs/
-     trackingViewLogs collections already exist in the data model) before
-     then.
+   RESOLVED (2026-09-08, live user report: "Order form ke Logs Nhi arhe h" --
+   order-ops-firestore.html's admin-only "Order Form Logs" button always
+   showed 0/empty): silent visitor/tracking-view logging (runVisitorLogging /
+   appendLogEntry) previously called the OLD Apps Script backend below, which
+   nobody was reading from anymore -- order-ops-firestore.html's
+   siteVisitLogs/trackingViewLogs listeners have ALWAYS read straight from
+   Firestore, so nothing was ever actually recorded. Now goes through the
+   publicLogVisit Cloud Function (Admin-SDK write -- the visitor here is
+   anonymous, and firestore.rules only allows signedIn() writes to these two
+   collections, so a direct client-side Firestore write was never an option).
+   See publicLogVisit's own header comment in functions/index.js, and the new
+   cleanupOldVisitLogs scheduled function there for the "7 din tk ka data
+   rkhna tha" (7-day retention) half of that same request.
    ========================================================================= */
-const ORDEROPS_API_URL = "https://script.google.com/macros/s/AKfycbzGTJDC1jXEb15S2QQl_G5e-RBlRhiEfsC9rJwaXYiJTfB5mUJ8BX6aOQFGqTUKWIht/exec";
-// Still used for the old-backend calls listed above (tracking + visitor
-// logging) AND reused as-is for the two new Cloud Functions calls below --
-// same public, restricted secret either way (baked into client JS, visible
-// via view-source; this is the accepted trust model for this public page).
+// NOTE: the OLD Apps Script backend (order-ops-backend.gs) is no longer
+// called by ANYTHING in this file as of the fix above -- order tracking was
+// already migrated to publicTrackOrder in an earlier pass, and visitor
+// logging (the last remaining caller) now goes through publicLogVisit
+// instead. The old fetch-all/append helper functions and the Apps Script
+// base-URL constant they used have been removed accordingly. ORDEROPS_SECRET
+// is unrelated to that backend -- it's the shared secret every publicXxx
+// Cloud Function below validates against, kept under its original name.
 const ORDEROPS_SECRET = "MOI-PublicForm-9fK2mQ7xR4";
 // Deployed 2026-08-28. NOTE: these are 2nd-gen Cloud Functions -- each one
 // gets its OWN unique Cloud Run URL (no shared "<region>-<project>
@@ -535,6 +539,14 @@ const PUBLIC_TRACK_ORDER_URL = "https://publictrackorder-tldch7755a-em.a.run.app
 // Run URLs include a project-specific hash that can't be predicted from the
 // function name alone.
 const PUBLIC_VERIFY_CUSTOMER_URL = "https://publicverifycustomer-tldch7755a-em.a.run.app";
+// ADDED (2026-09-08, Order Form Logs bugfix -- see the header comment block
+// above): PASTE ITS REAL TRIGGER URL HERE the same way every constant above
+// was originally filled in (Firebase console -> Build -> Functions ->
+// publicLogVisit -> copy the "Trigger URL" shown on its row) once deployed.
+// Left as an obvious placeholder for the same reason as the others: Cloud
+// Run URLs include a project-specific hash that can't be predicted from the
+// function name alone.
+const PUBLIC_LOG_VISIT_URL = "https://publiclogvisit-tldch7755a-em.a.run.app";
 // A raw fetch() has NO timeout of its own — on a slow/unreliable connection
 // (mobile data especially), a request that never gets a response just hangs
 // forever with no error, which looks exactly like "stuck loading forever,
@@ -549,14 +561,6 @@ function fetchWithTimeout(url, options, timeoutMs){
     .finally(()=>clearTimeout(timer));
 }
 
-// Still the old backend — order tracking hasn't been migrated (see the
-// block comment above).
-async function orderOpsFetchAll(){
-  const res = await fetchWithTimeout(`${ORDEROPS_API_URL}?secret=${encodeURIComponent(ORDEROPS_SECRET)}&_=${Date.now()}`);
-  const json = await res.json();
-  if(json.error) throw new Error(json.error);
-  return json.data || {};
-}
 // Firestore-backed catalog fetch — replaces orderOpsFetchLite AND
 // orderOpsFetchLiteDelta (see loadLiveCatalog/refreshLiveCatalogSilent
 // below: the delta-since mechanism is deliberately dropped in favor of a
@@ -898,32 +902,32 @@ function deviceString(){
   else if(/Safari\//i.test(ua) && !/Chrome/i.test(ua)) browser = 'Safari';
   return `${os} · ${browser}`;
 }
-// Still the old backend — visitor/tracking-view logging hasn't been
-// migrated (see the CLOUD_FUNCTIONS_BASE_URL comment block near the top of
-// this file).
-async function orderOpsAppend(key, item){
-  const res = await fetchWithTimeout(ORDEROPS_API_URL, {
-    method:'POST',
-    headers:{'Content-Type':'text/plain;charset=utf-8'},
-    body: JSON.stringify({ secret:ORDEROPS_SECRET, action:'append', key, item })
-  });
-  const json = await res.json();
-  if(json.error) throw new Error(json.error);
-  return json;
-}
 // FIRESTORE (Task #55): the old orderOpsSubmitOrder(orderId, customer,
 // items, orderLat, orderLng) helper — which POSTed action:'submitPublicOrder'
 // straight to the old Apps Script backend — was removed here. Order
 // submission now goes exclusively through submitPublicOrder /
 // buildPublicOrderPayload (see the CLOUD_FUNCTIONS_BASE_URL comment block
 // near the top of this file), called from submitToOrderOps below.
-async function appendLogEntry(entityPrefix, entry){
-  // Atomic server-side append — safe even if many visitors hit the site in
-  // the same moment (see appendToArray_ on the backend for why this matters
-  // more here than almost anywhere else in the app: page-load traffic can
-  // be far more concurrent than actual order submissions).
-  const dayKey = new Date(entry.at).toISOString().slice(0,10);
-  try{ await orderOpsAppend(entityPrefix + '_' + dayKey, entry); }catch(e){}
+//
+// FIXED (2026-09-08, Order Form Logs bugfix — see the header comment block
+// near the top of this file): writes a single visit/tracking-view entry via
+// the publicLogVisit Cloud Function instead of the old, effectively-dead
+// Apps Script backend. `kind` must be exactly 'siteVisitLogs' or
+// 'trackingViewLogs' — publicLogVisit whitelists both server-side and
+// rejects anything else, since this is a public unauthenticated endpoint.
+// `entry.id` (visitId/viewId, minted below) becomes the Firestore document
+// id server-side, so a network retry of the same visit can never double-log
+// it. Never throws to the caller — same "never blocks the page or surfaces
+// errors to the visitor" contract as before.
+async function appendLogEntry(kind, entry){
+  try{
+    const res = await fetchWithTimeout(PUBLIC_LOG_VISIT_URL, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ secret:ORDEROPS_SECRET, kind, entry })
+    });
+    await res.json();
+  }catch(e){ /* best-effort only — a visitor must never see or be blocked by a logging failure */ }
 }
 (async function runVisitorLogging(){
   let location_ = 'Unknown', ip = null;
@@ -1265,7 +1269,7 @@ function getOrderStats(){
   return { lineCount, totalPieces };
 }
 
-const FORM_BUILD = "2026-09-02-firestore-round13.2"; // CRASH/REGRESSION/STRESS SWEEP (2026-09-02), user request: "ab zra Iska End to end Regression, Stress and Site Crash Ki Full testing krdo. only order form and order ops ki. koi Bug aye to hand to hand fix kr dena." -- full offline-mocked Playwright regression+stress+crash pass (every fix below interactively re-verified end-to-end in a real headless Chromium session against this actual, unmodified file, zero uncaught page errors across all scenarios). 7 fixes: (1) the order table never showed WHICH item a row was for, only its size -- easy to place a wrong-item order when several items share a size -- added an Item name column/cell before Size. (2) the item-search box rendered its own typed value back into the page unescaped (self-XSS via a crafted query string / shared-device typing) -- now esc()-ed, plus a maxlength=120 sanity cap. (3) a malformed/missing-field catalog item (a bad Firestore doc, or a genuinely empty catalog) could crash normalizeSize()/preprocessCatalog() and take the whole form down -- normalizeSize now coerces null/undefined to '' instead of calling .toLowerCase() on it, and the sort comparators String()-coerce cat/name first. (4) an empty catalog (e.g. a transient load hiccup) rendered a silently blank product area with no way forward -- added a "No products available right now -- Retry" state (retryEmptyCatalog()) instead of a dead screen. (5) if the browser's location permission prompt was denied, dismissed, or simply never resolved, the "getting your location..." submit-blocking state could hang forever with no way to actually place the order -- added a 15s timeout (LOCATION_REQUEST_TIMEOUT_MS) that falls through to the existing error state, and a "Continue without location" skip button is now also offered during the pending state itself, not just after a failure. (6) the tracking-page phone number input rendered its own value back unescaped (self-XSS, same class of bug as #2) -- now esc()-ed. (7) server-side: buildOrderDocFromPayload/validatePublicOrderPayload (functions/lib/adminPublic.js) had no upper bound on item quantity or item count -- a garbage/abusive payload (e.g. qty:99999999999 or a 50,000-item array) could reach Firestore and blow up downstream stock math/report rendering -- added MAX_ORDER_ITEM_QTY (100,000) and MAX_ORDER_ITEMS (500) caps, rejected with a clear error before the order is ever created; needs the Cloud Functions to be redeployed (functions/lib/adminPublic.js changed) for this cap to take effect in production. Full regression test suite (34 files) green. ROUND 13.1 (2026-09-01), user question "ye chiz wha b to update hogi na jaha order track hota hai" -- this tracking page was NOT actually aware of order-ops-firestore.html's new LR/Stock photo choice (Round 13): it always showed "LR" wording (View/Download LR, LR Number, alt="LR photo") no matter which type staff picked when uploading. trackOrderCardHtml/openLRViewDialog now read order.photoType and show "📦 Stock Photo" wording (and hide the LR Number line) when it's a stock photo, matching the staff app's own order-list badge. ROUND 10 (2026-08-31) security fix pass: publicGetCatalog no longer sends every customer's full phone/address/GSTIN to the browser before the "confirm it's you" check -- that check now genuinely happens server-side (new publicVerifyCustomer Cloud Function; see functions/index.js and this file's PUBLIC_VERIFY_CUSTOMER_URL). Also fixed: customer-entered fields (name/phone/city/address/gstin/date) are now esc()-ed before going into innerHTML (self-XSS); a genuinely failed order submission now shows a real "Order not submitted, try again" screen with the form intact, instead of always claiming "✅ Order submitted!"; a double-submit guard on the final Submit button. (2026-08-28: promoted to production -- talks to the deployed Cloud Functions (publicGetCatalog/publicSubmitOrder/publicTrackOrder) instead of the old Apps Script backend. Only silent visitor/tracking-view LOGGING still calls the old Apps Script backend -- see the top-of-file comment block; pure analytics, no effect on order correctness.)
+const FORM_BUILD = "2026-09-08-firestore-round14"; // BUGFIX (2026-09-08), live user report: "Order form ke Logs Nhi arhe h. kisne apni link se Order khol k chk kia 7 din tk ka data rkhna tha." -- the admin-only "Order Form Logs" button on order-ops-firestore.html's Orders tab always showed 0/empty because this file's silent visitor/tracking-view logging (runVisitorLogging/appendLogEntry) still called the OLD, effectively-dead Apps Script backend, which nothing was reading from anymore. Now goes through a new publicLogVisit Cloud Function (Admin-SDK write, since the visitor here is anonymous and firestore.rules only allows signedIn() writes to siteVisitLogs/trackingViewLogs) -- new PUBLIC_LOG_VISIT_URL placeholder constant, same pattern as PUBLIC_VERIFY_CUSTOMER_URL, needs the real Trigger URL pasted in after deploying. The now-fully-dead orderOpsFetchAll/orderOpsAppend helpers and the Apps Script base-URL constant they used have been removed. Also added a new cleanupOldVisitLogs scheduled Cloud Function (7-day retention, mirroring cleanupOldExpenses) so these two collections don't grow unboundedly now that something actually writes to them -- genuinely satisfies "7 din tk ka data rkhna tha" server-side, not just in the UI's read filter. See functions/index.js's publicLogVisit/cleanupOldVisitLogs header comments and ORDER_OPS_FIRESTORE_REWRITE_STATUS.md for the full writeup + deploy steps. CRASH/REGRESSION/STRESS SWEEP (2026-09-02), user request: "ab zra Iska End to end Regression, Stress and Site Crash Ki Full testing krdo. only order form and order ops ki. koi Bug aye to hand to hand fix kr dena." -- full offline-mocked Playwright regression+stress+crash pass (every fix below interactively re-verified end-to-end in a real headless Chromium session against this actual, unmodified file, zero uncaught page errors across all scenarios). 7 fixes: (1) the order table never showed WHICH item a row was for, only its size -- easy to place a wrong-item order when several items share a size -- added an Item name column/cell before Size. (2) the item-search box rendered its own typed value back into the page unescaped (self-XSS via a crafted query string / shared-device typing) -- now esc()-ed, plus a maxlength=120 sanity cap. (3) a malformed/missing-field catalog item (a bad Firestore doc, or a genuinely empty catalog) could crash normalizeSize()/preprocessCatalog() and take the whole form down -- normalizeSize now coerces null/undefined to '' instead of calling .toLowerCase() on it, and the sort comparators String()-coerce cat/name first. (4) an empty catalog (e.g. a transient load hiccup) rendered a silently blank product area with no way forward -- added a "No products available right now -- Retry" state (retryEmptyCatalog()) instead of a dead screen. (5) if the browser's location permission prompt was denied, dismissed, or simply never resolved, the "getting your location..." submit-blocking state could hang forever with no way to actually place the order -- added a 15s timeout (LOCATION_REQUEST_TIMEOUT_MS) that falls through to the existing error state, and a "Continue without location" skip button is now also offered during the pending state itself, not just after a failure. (6) the tracking-page phone number input rendered its own value back unescaped (self-XSS, same class of bug as #2) -- now esc()-ed. (7) server-side: buildOrderDocFromPayload/validatePublicOrderPayload (functions/lib/adminPublic.js) had no upper bound on item quantity or item count -- a garbage/abusive payload (e.g. qty:99999999999 or a 50,000-item array) could reach Firestore and blow up downstream stock math/report rendering -- added MAX_ORDER_ITEM_QTY (100,000) and MAX_ORDER_ITEMS (500) caps, rejected with a clear error before the order is ever created; needs the Cloud Functions to be redeployed (functions/lib/adminPublic.js changed) for this cap to take effect in production. Full regression test suite (34 files) green. ROUND 13.1 (2026-09-01), user question "ye chiz wha b to update hogi na jaha order track hota hai" -- this tracking page was NOT actually aware of order-ops-firestore.html's new LR/Stock photo choice (Round 13): it always showed "LR" wording (View/Download LR, LR Number, alt="LR photo") no matter which type staff picked when uploading. trackOrderCardHtml/openLRViewDialog now read order.photoType and show "📦 Stock Photo" wording (and hide the LR Number line) when it's a stock photo, matching the staff app's own order-list badge. ROUND 10 (2026-08-31) security fix pass: publicGetCatalog no longer sends every customer's full phone/address/GSTIN to the browser before the "confirm it's you" check -- that check now genuinely happens server-side (new publicVerifyCustomer Cloud Function; see functions/index.js and this file's PUBLIC_VERIFY_CUSTOMER_URL). Also fixed: customer-entered fields (name/phone/city/address/gstin/date) are now esc()-ed before going into innerHTML (self-XSS); a genuinely failed order submission now shows a real "Order not submitted, try again" screen with the form intact, instead of always claiming "✅ Order submitted!"; a double-submit guard on the final Submit button. (2026-08-28: promoted to production -- talks to the deployed Cloud Functions (publicGetCatalog/publicSubmitOrder/publicTrackOrder) instead of the old Apps Script backend. Only silent visitor/tracking-view LOGGING still calls the old Apps Script backend -- see the top-of-file comment block; pure analytics, no effect on order correctness.)
 // Per-item order cap (2026-08-21): a single line item can't exceed 50
 // cases worth of pieces (qty loose-pieces + cases*caseSize combined, not
 // 50 cases on top of separately-unlimited loose pieces). Items with no
